@@ -13,24 +13,13 @@ from concurrent.futures import ThreadPoolExecutor, Future, as_completed
 from pathlib import Path
 from dataclasses import dataclass, field
 from uuid import uuid4
-from .event import Event
-from .events import Events
+import collections
 
-@dataclass
-class File:
-    id: int
-    name: str
-    size: int
-    mtime: float
-    path: str
+if TYPE_CHECKING:
+    from .file import File
 
-    @classmethod
-    def from_path(cls, path: str) -> Self:
-        ...
+class Events(collections.UserDict):
+    file: File
 
-    @cached_property
-    def events(self):
-        out = Events()
-        out.file = self
-        return out
+
 
