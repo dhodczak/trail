@@ -42,44 +42,50 @@ class Handler(FileSystemEventHandler, Node):
         record = asdict(event)
         record["src_path"] = fsdecode(event.src_path)
         record["dest_path"] = fsdecode(event.dest_path)
-        change = WatchdogEvent(**record)
-        watchdog.loop.call_soon_threadsafe(watchdog.queue.put_nowait, change)
+        event = WatchdogEvent(**record)
+        watchdog.loop.call_soon_threadsafe(watchdog.queue.put_nowait, event)
 
 
 class Watchdog(Node):
     _parent: Trail
     debounce = 0.1
 
-    @classmethod
-    def from_path(cls, path: Path | str) -> Self:
-        """Metadata lives in path"""
-
     @cached_property
     def handler(self) -> Handler:
+        """Converts native filesystem events and schedules enqueueing on the asyncio loop."""
         return Handler(self)
 
     @cached_property
     def observer(self):
+        """Manages filesystem monitoring threads and dispatches events to the handler."""
         return Observer()
 
     @cached_property
     def queue(self) -> asyncio.Queue:
+        """Buffers events for the consumer; STOP ends consumption after pending events are applied."""
         return asyncio.Queue()
 
     @cached_property
     def loop(self):
+        """Runs the consumer and accepts queue callbacks submitted from observer threads."""
         return asyncio.get_running_loop()
 
     @cached_property
     def watches(self) -> dict[Path, ObservedWatch]:
+        """Maps directories to scheduled watch handles to prevent duplicates and allow unscheduling."""
         return {}
 
     @cached_property
     def dir2ids(self) -> dict[Path, set[int]]:
+        """
+        Maps directories to the entry IDs requiring observation. Releasing the last ID removes
+        the directory's watch. Survives clear() so start() can recreate watches on restart.
+        """
         return {}
 
     @cached_property
     def consumer(self) -> asyncio.Task[None]:
+        """Background asyncio task that batches queued events and applies them to the Trail."""
         return asyncio.create_task(self.apply(), name="watchdog-consumer")
 
     def watch(self, directory: Path) -> None:
@@ -126,6 +132,7 @@ class Watchdog(Node):
                 del self.watches[path]
 
     async def start(self) -> None:
+        """Start the observer and drain the queue of events."""
         consumer = self.__dict__.get("consumer")
         if consumer is not None:
             if not consumer.done():
@@ -150,6 +157,7 @@ class Watchdog(Node):
             raise
 
     async def stop(self) -> None:
+        """Stop the observer and drain the queue of events."""
         observer = self.observer
         observer.stop()
         if observer.is_alive():
@@ -185,6 +193,10 @@ class Watchdog(Node):
                 delattr(self, name)
 
     async def apply(self) -> None:
+        """
+        Iterate across the queue of events, applying them to the entries of the Trail so upcoming Events
+        may find their corresponding Entry.
+        """
         while True:
             first = await self.queue.get()
             if first is STOP:
