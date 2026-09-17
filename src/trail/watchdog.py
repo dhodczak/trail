@@ -40,8 +40,8 @@ class Handler(FileSystemEventHandler, Node):
     def on_any_event(self, event: FileSystemEvent) -> None:
         watchdog = self._parent
         record = asdict(event)
-        record['src_path'] = fsdecode(event.src_path)
-        record['dest_path'] = fsdecode(event.dest_path)
+        record["src_path"] = fsdecode(event.src_path)
+        record["dest_path"] = fsdecode(event.dest_path)
         change = WatchdogEvent(**record)
         watchdog.loop.call_soon_threadsafe(watchdog.queue.put_nowait, change)
 
@@ -83,10 +83,7 @@ class Watchdog(Node):
         return asyncio.create_task(self.apply(), name="watchdog-consumer")
 
     def watch(self, directory: Path) -> None:
-        if (
-                directory not in self.watches
-                and directory.is_dir()
-        ):
+        if directory not in self.watches and directory.is_dir():
             self.watches[directory] = self.observer.schedule(
                 self.handler,
                 str(directory),
@@ -104,9 +101,9 @@ class Watchdog(Node):
             )
 
     def release(
-            self,
-            directory: Path,
-            identifier: int,
+        self,
+        directory: Path,
+        identifier: int,
     ) -> None:
         ids = self.dir2ids.get(directory)
         if ids is None or identifier not in ids:
@@ -129,7 +126,7 @@ class Watchdog(Node):
                 del self.watches[path]
 
     async def start(self) -> None:
-        consumer = self.__dict__.get('consumer')
+        consumer = self.__dict__.get("consumer")
         if consumer is not None:
             if not consumer.done():
                 return
@@ -211,12 +208,9 @@ class Watchdog(Node):
             for event in batch:
                 if event.apply(trail) is None:
                     continue
-                if event.is_directory and event.event_type in ('created', 'moved'):
+                if event.is_directory and event.event_type in ("created", "moved"):
                     path = Path(event.dest_path or event.src_path)
-                    if (
-                            path.is_dir()
-                            and not trail._ignored(path)
-                    ):
+                    if path.is_dir() and not trail._ignored(path):
                         try:
                             root = trail.dirs.get(path)
                             if root is None:
@@ -227,7 +221,10 @@ class Watchdog(Node):
                         added = []
                         try:
                             for resource in resources:
-                                if resource._parent.id2entry.get(resource.id) is resource:
+                                if (
+                                    resource._parent.id2entry.get(resource.id)
+                                    is resource
+                                ):
                                     continue
                                 resource.add()
                                 added.append(resource)
@@ -238,7 +235,7 @@ class Watchdog(Node):
                         for resource in added:
                             discovered = WatchdogEvent(
                                 src_path=str(resource.path),
-                                event_type='created',
+                                event_type="created",
                                 is_directory=resource.path in trail.dirs,
                                 is_synthetic=True,
                             )

@@ -31,15 +31,15 @@ class File(Entry):
     def add(self) -> Self:
         collection = self._parent
         if collection is None:
-            raise ValueError('Entry has no Trail; pass trail to from_path')
+            raise ValueError("Entry has no Trail; pass trail to from_path")
         trail = collection._trail
         if self._trail is not trail:
-            raise ValueError('Entry already belongs to another Trail')
+            raise ValueError("Entry already belongs to another Trail")
         if collection is not trail.files:
-            raise ValueError('Entry belongs to the wrong collection')
+            raise ValueError("Entry belongs to the wrong collection")
         path = Path(self.path).expanduser().resolve()
         if trail._ignored(path):
-            raise ValueError(f'Cannot track Trail metadata: {path}')
+            raise ValueError(f"Cannot track Trail metadata: {path}")
         while self.id in trail.dirs.id2entry:
             del self.id
         previous_path = self.path
@@ -65,6 +65,7 @@ class File(Entry):
             if (
                 old is None
                 or old is self
+                # entries contains fresh entry
                 or collection.id2entry.get(old.id) is not old
             ):
                 continue
@@ -80,11 +81,7 @@ class File(Entry):
         return self
 
     def remove(self) -> None:
-        collection = self._parent
-        if (
-            collection is None
-            or collection.id2entry.get(self.id) is not self
-        ):
+        if self._parent.id2entry.get(self.id) is not self:
             return
         self._watchdog.release(self.directory, self.id)
         super().remove()

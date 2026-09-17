@@ -14,19 +14,20 @@ class Node:
     # todo: these should all be weakrefs
 
     def __init__(
-            self,
-            parent: Node | None = None,
+        self,
+        parent: Node | None = None,
     ) -> None:
         self._parent = parent
 
     @cached_property
     def _parent(self) -> Node:
-        msg = f'Node {self} has no parent'
+        msg = f"Node {self} has no parent"
         raise AttributeError(msg)
 
     @cached_property
     def _event(self) -> Event:
         from .event import Event
+
         parent = self._parent
         if isinstance(parent, Event):
             return parent
@@ -35,6 +36,7 @@ class Node:
     @cached_property
     def _trail(self) -> Trail:
         from .trail import Trail
+
         parent = self._parent
         if isinstance(parent, Trail):
             return parent
@@ -44,6 +46,7 @@ class Node:
     def _files(self) -> Files:
         from .file import Files
         from .trail import Trail
+
         parent = self._parent
         if isinstance(parent, Trail):
             return parent.files
@@ -54,6 +57,7 @@ class Node:
     @cached_property
     def _file(self) -> File:
         from .file import File
+
         parent = self._parent
         if isinstance(parent, File):
             return parent
@@ -63,6 +67,7 @@ class Node:
     def _events(self) -> Events:
         from .event import Events
         from .trail import Trail
+
         parent = self._parent
         if isinstance(parent, Trail):
             return parent.events
@@ -74,6 +79,7 @@ class Node:
     def _watchdog(self) -> Watchdog:
         from .trail import Trail
         from .watchdog import Watchdog
+
         parent = self._parent
         if isinstance(parent, Trail):
             return parent.watchdog
@@ -84,6 +90,7 @@ class Node:
     @cached_property
     def _handler(self) -> Handler:
         from .watchdog import Handler
+
         parent = self._parent
         if isinstance(parent, Handler):
             return parent
@@ -91,14 +98,14 @@ class Node:
 
     @staticmethod
     def _setnested(
-            obj: object,
-            name: str,
-            value: object,
+        obj: object,
+        name: str,
+        value: object,
     ):
-        attrs = name.split('.')
+        attrs = name.split(".")
         for attr in attrs[:-1]:
             obj = getattr(obj, attr)
         setattr(obj, attrs[-1], value)
 
-    def __set_name__( self, owner: type, name: str) -> None:
+    def __set_name__(self, owner: type, name: str) -> None:
         self.__name__ = name

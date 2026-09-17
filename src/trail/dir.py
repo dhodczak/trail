@@ -32,15 +32,15 @@ class Dir(Entry):
     def add(self) -> Self:
         collection = self._parent
         if collection is None:
-            raise ValueError('Entry has no Trail; pass trail to from_path')
+            raise ValueError("Entry has no Trail; pass trail to from_path")
         trail = collection._trail
         if self._trail is not trail:
-            raise ValueError('Entry already belongs to another Trail')
+            raise ValueError("Entry already belongs to another Trail")
         if collection is not trail.dirs:
-            raise ValueError('Entry belongs to the wrong collection')
+            raise ValueError("Entry belongs to the wrong collection")
         path = Path(self.path).expanduser().resolve()
         if trail._ignored(path):
-            raise ValueError(f'Cannot track Trail metadata: {path}')
+            raise ValueError(f"Cannot track Trail metadata: {path}")
         while self.id in trail.files.id2entry:
             del self.id
         previous_path = self.path
@@ -66,6 +66,7 @@ class Dir(Entry):
             if (
                 old is None
                 or old is self
+                # entries contains fresh entry
                 or collection.id2entry.get(old.id) is not old
             ):
                 continue
@@ -104,20 +105,16 @@ class Dir(Entry):
                 else:
                     collection = trail.files
                 pending.append(
-                    collection.get(child)
-                    or Entry.from_path(child, trail=trail)
+                    collection.get(child) or Entry.from_path(child, trail=trail)
                 )
 
     def remove(self) -> None:
-        collection = self._parent
-        if (
-            collection is None
-            or collection.id2entry.get(self.id) is not self
-        ):
+        if self._parent.id2entry.get(self.id) is not self:
             return
         for path in self._watch_paths:
             self._watchdog.release(path, self.id)
         super().remove()
+
 
 class Dirs(Entries[Dir]):
     entry_type = Dir

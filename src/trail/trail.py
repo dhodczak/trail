@@ -23,7 +23,7 @@ class JSON(Node):
     def dict(self) -> dict:
         trail = self._parent
         out = {
-            'id': trail.id,
+            "id": trail.id,
         }
         return out
 
@@ -32,14 +32,14 @@ class JSON(Node):
         if path is None:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open('w') as f:
+        with path.open("w") as f:
             json.dump(self.dict, f)
 
     def load(self):
         path = self.path
         if path is None or not path.exists():
             return
-        with path.open('r') as f:
+        with path.open("r") as f:
             data = json.load(f)
         trail = self._parent
         for key, value in data.items():
@@ -49,7 +49,7 @@ class JSON(Node):
     def path(self):
         trail = self._trail
         if trail.dir:
-            return trail.dir / 'path.json'
+            return trail.dir / "path.json"
         else:
             return None
 
@@ -61,16 +61,14 @@ class EntryLookup(
     _parent: Trail
 
     @overload
-    def __getitem__(self, key: EntryKey) -> Entry:
-        ...
+    def __getitem__(self, key: EntryKey) -> Entry: ...
 
     @overload
-    def __getitem__(self, key: Iterable[EntryKey]) -> tuple[Entry, ...]:
-        ...
+    def __getitem__(self, key: Iterable[EntryKey]) -> tuple[Entry, ...]: ...
 
     def __getitem__(
-            self,
-            key: EntryKey | Iterable[EntryKey],
+        self,
+        key: EntryKey | Iterable[EntryKey],
     ) -> Entry | tuple[Entry, ...]:
         if isinstance(key, (str, Path, int)):
             try:
@@ -80,7 +78,7 @@ class EntryLookup(
         selected = []
         for value in key:
             if not isinstance(value, (str, Path, int)):
-                raise TypeError('Expected a path or entry ID')
+                raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
 
@@ -94,10 +92,7 @@ class EntryLookup(
         return out
 
 
-class Trail(
-    Node
-):
-
+class Trail(Node):
     @cached_property
     def watchdog(self):
         return Watchdog(self)
@@ -127,8 +122,8 @@ class Trail(
         return Events(self)
 
     def __init__(
-            self,
-            dir: str | Path | None = None,
+        self,
+        dir: str | Path | None = None,
     ) -> None:
         """TODO: reference Myst's setup for a Trail setup"""
         super().__init__()
@@ -136,13 +131,9 @@ class Trail(
             # nodir mode
             self.dir = None
         else:
-            dir = (
-                Path(dir)
-                .expanduser()
-                .resolve()
-            )
-            if dir.name != '.trail':
-                dir /= '.trail'
+            dir = Path(dir).expanduser().resolve()
+            if dir.name != ".trail":
+                dir /= ".trail"
             self.dir = dir
             self.json.load()
             self.events.jsonl.read()
@@ -153,13 +144,10 @@ class Trail(
         return uuid4().int
 
     def add(self, *paths: str | Path) -> tuple[Entry, ...]:
-        requested = dict.fromkeys(
-            Path(path).expanduser().resolve()
-            for path in paths
-        )
+        requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         for path in requested:
             if self._ignored(path):
-                raise ValueError(f'Cannot track Trail metadata: {path}')
+                raise ValueError(f"Cannot track Trail metadata: {path}")
             if path not in self.entries:
                 Entry.from_path(path, trail=self)
         added = []
@@ -173,16 +161,10 @@ class Trail(
         return tuple(added)
 
     def _ignored(self, path: Path) -> bool:
-        return (
-                self.dir is not None
-                and path.is_relative_to(self.dir)
-        )
+        return self.dir is not None and path.is_relative_to(self.dir)
 
     def remove(self, *paths: str | Path) -> tuple[Entry, ...]:
-        requested = dict.fromkeys(
-            Path(path).expanduser().resolve()
-            for path in paths
-        )
+        requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         removed = []
         for path in requested:
             entry = self.entries.get(path)
@@ -196,13 +178,13 @@ class Trail(
         return tuple(removed)
 
     def commit(
-            self,
-            message: str = '',
-            author: str | None = None,
+        self,
+        message: str = "",
+        author: str | None = None,
     ) -> Checkpoint:
         events = self.events
         if not events:
-            raise ValueError('No events to commit.')
+            raise ValueError("No events to commit.")
         commit = Checkpoint(
             events=list(events.values()),
             message=message,
@@ -212,11 +194,7 @@ class Trail(
         return commit
 
     def push(
-            self,
-    ):
-        ...
+        self,
+    ): ...
 
-    def pull(
-            self
-    ):
-        ...
+    def pull(self): ...

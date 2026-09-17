@@ -23,9 +23,9 @@ class Entry(Node):
 
     @classmethod
     def from_path(
-            cls,
-            path: str | Path,
-            trail: Trail | None = None,
+        cls,
+        path: str | Path,
+        trail: Trail | None = None,
     ) -> Self:
         from .dir import Dir
         from .file import File
@@ -34,21 +34,21 @@ class Entry(Node):
         metadata = path.stat()
 
         if trail is not None and trail._ignored(path):
-            raise ValueError(f'Cannot track Trail metadata: {path}')
+            raise ValueError(f"Cannot track Trail metadata: {path}")
 
         if issubclass(cls, Dir):
             if not S_ISDIR(metadata.st_mode):
-                raise ValueError(f'Not a directory: {path}')
+                raise ValueError(f"Not a directory: {path}")
         elif issubclass(cls, File):
             if not S_ISREG(metadata.st_mode):
-                raise ValueError(f'Not a regular file: {path}')
+                raise ValueError(f"Not a regular file: {path}")
         else:
             if S_ISDIR(metadata.st_mode):
                 cls = Dir
             elif S_ISREG(metadata.st_mode):
                 cls = File
             else:
-                raise ValueError(f'Not a regular file or directory: {path}')
+                raise ValueError(f"Not a regular file or directory: {path}")
 
         out = cls()
         out.path = path
@@ -96,10 +96,7 @@ class Entry(Node):
 
     def remove(self) -> None:
         collection = self._parent
-        if (
-            collection is None
-            or collection.id2entry.get(self.id) is not self
-        ):
+        if collection is None or collection.id2entry.get(self.id) is not self:
             return
         del collection.id2entry[self.id]
         if collection.path2entry.get(self.path) is self:
@@ -125,8 +122,8 @@ class Entries[E: Entry](Node):
     def __getitem__(self, key: Iterable[EntryKey]) -> tuple[E, ...]: ...
 
     def __getitem__(
-            self,
-            key: EntryKey | Iterable[EntryKey],
+        self,
+        key: EntryKey | Iterable[EntryKey],
     ) -> E | tuple[E, ...]:
         if isinstance(key, int):
             return self.id2entry[key]
@@ -135,7 +132,7 @@ class Entries[E: Entry](Node):
         selected = []
         for value in key:
             if not isinstance(value, (str, Path, int)):
-                raise TypeError('Expected a path or entry ID')
+                raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
 
@@ -155,15 +152,15 @@ class Entries[E: Entry](Node):
 
     @overload
     def get[D](
-            self,
-            key: EntryKey,
-            default: D,
+        self,
+        key: EntryKey,
+        default: D,
     ) -> E | D: ...
 
     def get[D](
-            self,
-            key: EntryKey,
-            default: D | None = None,
+        self,
+        key: EntryKey,
+        default: D | None = None,
     ) -> E | D | None:
         try:
             return self[key]
@@ -178,9 +175,8 @@ class Entries[E: Entry](Node):
         for path in paths:
             resolved = Path(path).expanduser().resolve()
             if resolved not in selected:
-                selected[resolved] = (
-                    self.get(resolved)
-                    or self.entry_type.from_path(resolved, trail=self._trail)
+                selected[resolved] = self.get(resolved) or self.entry_type.from_path(
+                    resolved, trail=self._trail
                 )
         registered = []
         try:
@@ -188,10 +184,7 @@ class Entries[E: Entry](Node):
                 if self.id2entry.get(entry.id) is entry:
                     entry.add()
                     continue
-                while (
-                    entry.id in self._trail.files
-                    or entry.id in self._trail.dirs
-                ):
+                while entry.id in self._trail.files or entry.id in self._trail.dirs:
                     del entry.id
                 entry.add()
                 registered.append(entry)
