@@ -10,3 +10,10 @@ dist/
 build/
 *.egg-info/
 .idea/
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# MyST build outputs
+_build
