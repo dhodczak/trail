@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import overload
 from uuid import uuid4
 
-from .dir import Dirs
-from .entry import Entry, EntryKey
-from .event import AddEntryEvent, Events, RemoveEntryEvent
-from .file import Files
-from .node import Node
-from .util import ByPos, file_repr, list_repr, normalize_id
-from .watchdog import Watchdog
+from trail.dir import Dirs
+from trail.entry import Entry, EntryKey
+from trail.event import AddEntryEvent, Events, RemoveEntryEvent
+from trail.file import Files
+from trail.node import Node
+from trail.util import ByPos, file_repr, list_repr, normalize_id
+from trail.watchdog import Watchdog
 
 
 class JSON(Node):

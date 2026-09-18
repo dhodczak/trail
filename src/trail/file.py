@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Self
 from uuid import uuid4
 
-from .entry import Entries, Entry
+from trail.entry import Entries, Entry
 
 
 class File(Entry):

@@ -8,12 +8,12 @@ from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
-from .node import Node
-from .util import ByPos, normalize_id
+from trail.node import Node
+from trail.util import ByPos, normalize_id
 
 if TYPE_CHECKING:
-    from .event import Event
-    from .trail import Trail
+    from trail.event import Event
+    from trail.trail import Trail
 
 EntryKey = str | Path
 
@@ -55,8 +55,8 @@ class Entry(Node):
         path: str | Path,
         trail: Trail | None = None,
     ) -> Self:
-        from .dir import Dir
-        from .file import File
+        from trail.dir import Dir
+        from trail.file import File
 
         path = Path(path).expanduser().resolve()
         metadata = path.stat()

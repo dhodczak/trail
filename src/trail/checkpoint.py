@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from .node import Node
-from .util import file_repr, normalize_id
+from trail.node import Node
+from trail.util import file_repr, normalize_id
 
 if TYPE_CHECKING:
-    from .event import Event
-    from .trail import Trail
+    from trail.event import Event
+    from trail.trail import Trail
 
 
 @dataclass

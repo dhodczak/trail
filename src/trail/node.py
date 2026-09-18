@@ -4,10 +4,10 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .event import Event, Events
-    from .file import File, Files
-    from .trail import Trail
-    from .watchdog import Handler, Watchdog
+    from trail.event import Event, Events
+    from trail.file import File, Files
+    from trail.trail import Trail
+    from trail.watchdog import Handler, Watchdog
 
 
 class Node:
@@ -26,7 +26,7 @@ class Node:
 
     @cached_property
     def _event(self) -> Event:
-        from .event import Event
+        from trail.event import Event
 
         parent = self._parent
         if isinstance(parent, Event):
@@ -35,7 +35,7 @@ class Node:
 
     @cached_property
     def _trail(self) -> Trail:
-        from .trail import Trail
+        from trail.trail import Trail
 
         parent = self._parent
         if isinstance(parent, Trail):
@@ -44,8 +44,8 @@ class Node:
 
     @cached_property
     def _files(self) -> Files:
-        from .file import Files
-        from .trail import Trail
+        from trail.file import Files
+        from trail.trail import Trail
 
         parent = self._parent
         if isinstance(parent, Trail):
@@ -56,7 +56,7 @@ class Node:
 
     @cached_property
     def _file(self) -> File:
-        from .file import File
+        from trail.file import File
 
         parent = self._parent
         if isinstance(parent, File):
@@ -65,8 +65,8 @@ class Node:
 
     @cached_property
     def _events(self) -> Events:
-        from .event import Events
-        from .trail import Trail
+        from trail.event import Events
+        from trail.trail import Trail
 
         parent = self._parent
         if isinstance(parent, Trail):
@@ -77,8 +77,8 @@ class Node:
 
     @cached_property
     def _watchdog(self) -> Watchdog:
-        from .trail import Trail
-        from .watchdog import Watchdog
+        from trail.trail import Trail
+        from trail.watchdog import Watchdog
 
         parent = self._parent
         if isinstance(parent, Trail):
@@ -89,7 +89,7 @@ class Node:
 
     @cached_property
     def _handler(self) -> Handler:
-        from .watchdog import Handler
+        from trail.watchdog import Handler
 
         parent = self._parent
         if isinstance(parent, Handler):

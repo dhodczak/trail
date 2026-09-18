@@ -24,13 +24,13 @@ from watchdog.events import (
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver, ObservedWatch
 
-from .entry import Entry
-from .event import WatchdogEvent
-from .node import Node
-from .util import list_repr
+from trail.entry import Entry
+from trail.event import WatchdogEvent
+from trail.node import Node
+from trail.util import list_repr
 
 if TYPE_CHECKING:
-    from .trail import Trail
+    from trail.trail import Trail
 
 STOP: Final = object()
 

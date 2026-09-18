@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
-from .entry import Entry
-from .node import Node
-from .util import ByPos, file_repr, normalize_id
+from trail.entry import Entry
+from trail.node import Node
+from trail.util import ByPos, file_repr, normalize_id
 
 if TYPE_CHECKING:
-    from .trail import Trail
+    from trail.trail import Trail
 
 
 @dataclass(kw_only=True, slots=True, repr=False)
@@ -275,8 +275,8 @@ class JSONL(Node):
             return None
 
     def read(self) -> None:
-        from .dir import Dir
-        from .file import File
+        from trail.dir import Dir
+        from trail.file import File
 
         path = self.path
         trail = self._trail

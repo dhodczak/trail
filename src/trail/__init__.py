@@ -1,3 +1,3 @@
-from .trail import Trail
+from trail.trail import Trail
 
 __all__ = ["Trail"]
