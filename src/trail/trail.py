@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import overload
 from uuid import uuid4
 
-from .checkpoint import Checkpoint
 from .dir import Dirs
 from .entry import Entry, EntryKey
 from .event import AddEntryEvent, Events, RemoveEntryEvent
@@ -177,7 +176,7 @@ class Trail(Node):
         """
         return uuid4().int
 
-    def add(self, *paths: str | Path) -> tuple[Entry, ...]:
+    def add(self, *paths: str | Path) -> Entry | list[Entry]:
         """Adds the specified filesystem paths to the Trail for tracking."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         for path in requested:
@@ -193,13 +192,15 @@ class Trail(Node):
                 entry = event.apply(self)
                 self.events[event.id] = event
             added.append(entry)
-        return tuple(added)
+        if len(paths) == 1:
+            return added[0]
+        return added
 
     def _ignored(self, path: Path) -> bool:
         """Returns True if the path is relative to the `trail` directory, e.g. `/.trail/ignored"""
         return self.dir is not None and path.is_relative_to(self.dir)
 
-    def remove(self, *paths: str | Path) -> tuple[Entry, ...]:
+    def remove(self, *paths: str | Path) -> Entry | list[Entry]:
         """Removes the specified filesystem paths from the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         removed = []
@@ -212,9 +213,11 @@ class Trail(Node):
             if result is not None:
                 self.events[event.id] = event
                 removed.append(result)
-        return tuple(removed)
+        if len(paths) == 1 and removed:
+            return removed[0]
+        return removed
 
-    def push( self ):
+    def push(self):
         """Placeholder for possible remote synchronization"""
 
     def pull(self):

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from collections import UserDict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Self, overload
+from typing import TYPE_CHECKING, ClassVar, overload
 from uuid import uuid4
 
 from .entry import Entry
@@ -17,13 +17,42 @@ if TYPE_CHECKING:
     from .trail import Trail
 
 
-@dataclass(kw_only=True, slots=True)
+@dataclass(kw_only=True, slots=True, repr=False)
 class Event:
     classes: ClassVar[dict[str, type[Event]]] = {}
 
-    entry: Entry | None = field(default=None, init=False)
-    id: int = field(default_factory=lambda: uuid4().int)
+    entry: Entry | None = field(default=None, init=False, repr=False)
+    id: int = field(default_factory=lambda: uuid4().int, repr=True)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def _repr_items(self) -> Iterator[tuple[str, object]]:
+        for event_field in fields(self):
+            if not event_field.repr:
+                continue
+            value = getattr(self, event_field.name)
+            if event_field.name == 'timestamp':
+                now = datetime.now(value.tzinfo)
+                date_prefix = ''
+                if value.year != now.year:
+                    date_prefix = value.strftime('%Y-%m-%d ')
+                elif value.month != now.month:
+                    date_prefix = value.strftime('%m-%d ')
+                elif value.day != now.day:
+                    date_prefix = value.strftime('%d ')
+                value = (
+                    f'{date_prefix}{value:%H:%M:%S}.'
+                    f'{value.microsecond // 1000:03d}'
+                )
+            if value == '':
+                continue
+            yield event_field.name, value
+
+    def __repr__(self) -> str:
+        attributes = ', '.join(
+            f'{name}={value}'
+            for name, value in self._repr_items()
+        )
+        return f'{type(self).__name__}({attributes})'
 
     def apply(
         self,
@@ -80,11 +109,11 @@ class Event:
         return out
 
 
-@dataclass(kw_only=True, slots=True)
+@dataclass(kw_only=True, slots=True, repr=False)
 class AddEntryEvent(Event):
     src_path: str
-    is_directory: bool = field(default=False, init=False)
-    entry: Entry | None = field(default=None, init=False)
+    is_directory: bool = field(default=False, init=False, repr=False)
+    entry: Entry | None = field(default=None, init=False, repr=False)
 
     def apply(
         self,
@@ -106,10 +135,10 @@ class AddEntryEvent(Event):
         return entry
 
 
-@dataclass(kw_only=True, slots=True)
+@dataclass(kw_only=True, slots=True, repr=False)
 class RemoveEntryEvent(Event):
     src_path: str
-    entry: Entry | None = field(default=None, init=False)
+    entry: Entry | None = field(default=None, init=False, repr=False)
 
     def apply(
         self,
@@ -129,14 +158,14 @@ class RemoveEntryEvent(Event):
         return entry
 
 
-@dataclass(kw_only=True, slots=True)
+@dataclass(kw_only=True, slots=True, repr=False)
 class WatchdogEvent(Event):
     src_path: str
     dest_path: str = ""
-    event_type: str = ""
-    is_directory: bool = False
-    is_synthetic: bool = field(default=False)
-    entry: Entry | None = field(default=None, init=False)
+    event_type: str = field(default="", repr=False)
+    is_directory: bool = field(default=False, repr=False)
+    is_synthetic: bool = field(default=False, repr=False)
+    entry: Entry | None = field(default=None, init=False, repr=False)
 
     def apply(
         self,
@@ -216,7 +245,7 @@ class WatchdogEvent(Event):
         return entry
 
 
-@dataclass(kw_only=True, slots=True)
+@dataclass(kw_only=True, slots=True, repr=False)
 class JupyterEvent(Event):
     def apply(
         self,
@@ -398,3 +427,15 @@ class Events(
         self.data.clear()
         self.ids.clear()
         self.jsonl.write()
+
+    def __repr__(self) -> str:
+        lines = [f'{type(self).__name__} ({len(self)})']
+        for position, event in enumerate(self.data.values()):
+            heading = f'    {position}. {type(event).__name__}'
+            event_type = getattr(event, 'event_type', '')
+            if event_type:
+                heading += f' [{event_type}]'
+            lines.append(heading)
+            for name, value in event._repr_items():
+                lines.append(f'        {name}: {value!r}')
+        return '\n'.join(lines)
