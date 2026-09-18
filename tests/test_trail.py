@@ -66,6 +66,54 @@ class TestTrail:
 
         asyncio.run(run())
 
+    def test_passive_instantiation_observes_without_a_context(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                csv = root / "dataset.csv"
+                trail = Trail()
+                entry = trail.add(csv)
+                assert trail.watchdog.running
+                assert trail.watchdog.observer.is_alive()
+                previous = len(trail.events)
+                with csv.open(encoding="utf-8") as stream:
+                    assert stream.read() == "name,value\nexample,42\n"
+                async with asyncio.timeout(5):
+                    while (opened := self.opened_event(trail, csv, previous)) is None:
+                        await asyncio.sleep(0.01)
+                assert opened.entry is entry
+                # entering the context afterwards must not restart or duplicate the observer
+                observer = trail.watchdog.observer
+                async with trail.watchdog.context():
+                    assert trail.watchdog.observer is observer
+                assert not trail.watchdog.running
+
+        asyncio.run(run())
+
+    def test_passive_instantiation_is_dormant_without_a_loop(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            trail = Trail()
+            entry = trail.add(csv)
+            assert not trail.watchdog.ensure()
+            assert not trail.watchdog.running
+            assert trail.watchdog.dir2ids[root] == {entry.id}
+
+            async def run() -> None:
+                # the dormant membership becomes a live watch once a loop exists
+                async with trail.watchdog.context():
+                    assert trail.watchdog.observer.is_alive()
+                    previous = len(trail.events)
+                    with csv.open(encoding='utf-8') as stream:
+                        assert stream.read() == 'name,value\nexample,42\n'
+                    async with asyncio.timeout(5):
+                        while (
+                            opened := self.opened_event(trail, csv, previous)
+                        ) is None:
+                            await asyncio.sleep(0.01)
+                assert opened.entry is entry
+
+            asyncio.run(run())
+
     def test_persistent_add_open_and_new_session(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
@@ -582,6 +630,14 @@ if __name__ == "__main__":
     test_object = TestTrail()
     tests = [
         ("test_pathless_add_and_open", "pathless trail tracks an opened CSV"),
+        (
+            'test_passive_instantiation_observes_without_a_context',
+            'passive instantiation observes without a context',
+        ),
+        (
+            'test_passive_instantiation_is_dormant_without_a_loop',
+            'passive instantiation stays dormant without a loop',
+        ),
         # (
         #     "test_persistent_add_open_and_new_session",
         #     "persistent trail survives new sessions",
