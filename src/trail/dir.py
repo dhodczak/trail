@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from functools import cached_property
 from pathlib import Path
 from typing import Self
+from uuid import uuid4
 
 from .entry import Entries, Entry
 
@@ -42,7 +43,7 @@ class Dir(Entry):
         if trail._ignored(path):
             raise ValueError(f"Cannot track Trail metadata: {path}")
         while self.id in trail.files.id2entry:
-            del self.id
+            self.id = uuid4().int
         previous_path = self.path
         self.path = path
         watchdog = self._watchdog
@@ -78,6 +79,8 @@ class Dir(Entry):
             else:
                 old.remove()
         collection.path2entry[path] = self
+        if self.id not in collection.id2entry:
+            collection.ids.append(self.id)
         collection.id2entry[self.id] = self
         return self
 

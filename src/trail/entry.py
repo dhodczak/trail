@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import ItemsView, Iterable, Iterator
+from dataclasses import dataclass, field, fields
 from functools import cached_property
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
+from .bypos import ByPos
 from .node import Node
 
 if TYPE_CHECKING:
@@ -16,10 +18,33 @@ if TYPE_CHECKING:
 EntryKey = str | Path | int
 
 
+@dataclass(kw_only=True, eq=False, repr=False)
 class Entry(Node):
+    id: int = field(default_factory=lambda: uuid4().int)
     path: Path
-    _parent: Entries[Self]
-    id: int
+
+    if TYPE_CHECKING:
+        _parent: Entries[Self]
+
+    def __post_init__(self) -> None:
+        Node.__init__(self)
+        self.path = Path(self.path).expanduser().resolve()
+
+    def _repr_items(self) -> Iterator[tuple[str, object]]:
+        for entry_field in fields(self):
+            if not entry_field.repr:
+                continue
+            value = getattr(self, entry_field.name)
+            if entry_field.name == 'path':
+                value = str(value)
+            yield entry_field.name, value
+
+    def __repr__(self) -> str:
+        attributes = ', '.join(
+            f'{name}={value!r}'
+            for name, value in self._repr_items()
+        )
+        return f'{type(self).__name__}({attributes})'
 
     @classmethod
     def from_path(
@@ -50,8 +75,7 @@ class Entry(Node):
             else:
                 raise ValueError(f"Not a regular file or directory: {path}")
 
-        out = cls()
-        out.path = path
+        out = cls(path=path)
         out._trail = trail
         if trail is not None:
             if isinstance(out, Dir):
@@ -77,10 +101,6 @@ class Entry(Node):
         return self.path.stat().st_mtime
 
     @cached_property
-    def id(self) -> int:
-        return uuid4().int
-
-    @cached_property
     def events(self) -> dict[int, Event]:
         return {}
 
@@ -99,6 +119,7 @@ class Entry(Node):
         if collection is None or collection.id2entry.get(self.id) is not self:
             return
         del collection.id2entry[self.id]
+        collection.ids.remove(self.id)
         if collection.path2entry.get(self.path) is self:
             del collection.path2entry[self.path]
 
@@ -106,6 +127,25 @@ class Entry(Node):
 class Entries[E: Entry](Node):
     _parent: Trail
     entry_type: type[E]
+
+    def __init__(self, parent: Trail | None = None) -> None:
+        Node.__init__(self, parent)
+        self.ids: list[int] = []
+
+    @cached_property
+    def by_pos(self) -> ByPos[E]:
+        return ByPos(self)
+
+    def __repr__(self) -> str:
+        lines = [f'{type(self).__name__} ({len(self)})']
+        for position, identifier in enumerate(self.ids):
+            entry = self[identifier]
+            lines.append(f'    {position}. {type(entry).__name__}')
+            lines.extend(
+                f'        {name}: {value!r}'
+                for name, value in entry._repr_items()
+            )
+        return '\n'.join(lines)
 
     @cached_property
     def path2entry(self) -> dict[Path, E]:
@@ -184,8 +224,11 @@ class Entries[E: Entry](Node):
                 if self.id2entry.get(entry.id) is entry:
                     entry.add()
                     continue
-                while entry.id in self._trail.files or entry.id in self._trail.dirs:
-                    del entry.id
+                while (
+                    entry.id in self._trail.files
+                    or entry.id in self._trail.dirs
+                ):
+                    entry.id = uuid4().int
                 entry.add()
                 registered.append(entry)
         except Exception:

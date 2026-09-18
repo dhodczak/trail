@@ -377,6 +377,90 @@ class TestTrail:
 
         asyncio.run(run())
 
+    def test_entry_positions_follow_tracking_changes(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            other_csv = root / 'other.csv'
+            other_csv.write_text('name,value\nother,7\n', encoding='utf-8')
+            directory = root / 'subdirectory'
+            directory.mkdir()
+            trail = Trail()
+            files = trail.files.by_pos
+            directories = trail.dirs.by_pos
+            entries = trail.entries.by_pos
+            first = trail.add(csv)
+            second = trail.add(other_csv)
+            tracked_directory = trail.add(directory)
+
+            assert files[:] == [first, second]
+            assert files[::-1] == [second, first]
+            assert directories[:] == [tracked_directory]
+            assert entries[:] == [first, second, tracked_directory]
+            assert trail.files.ids == [first.id, second.id]
+            assert trail.dirs.ids == [tracked_directory.id]
+            assert trail.files[first.id] is files[0]
+            assert trail.files[csv] is files[0]
+            assert trail.add(csv) is first
+            assert files[:] == [first, second]
+
+            trail.remove(csv)
+            assert files[:] == [second]
+            assert trail.files.ids == [second.id]
+            readded = trail.add(csv)
+            assert readded.id != first.id
+            assert files[:] == [second, readded]
+            assert trail.files.ids == [second.id, readded.id]
+            assert entries[:] == [second, readded, tracked_directory]
+            trail.remove(other_csv, csv, directory)
+            assert files[:] == []
+            assert directories[:] == []
+            assert entries[:] == []
+            assert trail.files.ids == []
+            assert trail.dirs.ids == []
+
+    def test_discovered_entries_survive_reload(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                trail = Trail(root)
+                root_entry = trail.add(root)
+                csv = root / 'discovered.csv'
+                directory = root / 'discovered_directory'
+                async with trail.watchdog.context():
+                    csv.write_text('name,value\nother,7\n', encoding='utf-8')
+                    directory.mkdir()
+                    async with asyncio.timeout(5):
+                        while (
+                            csv not in trail.files
+                            or directory not in trail.dirs
+                        ):
+                            await asyncio.sleep(0.01)
+
+                file_entry = trail.files[csv]
+                directory_entry = trail.dirs[directory]
+                assert trail.files.by_pos[:] == [file_entry]
+                assert trail.files.ids == [file_entry.id]
+                assert trail.dirs.by_pos[:] == [root_entry, directory_entry]
+                assert trail.dirs.ids == [root_entry.id, directory_entry.id]
+                csv.unlink()
+                directory.rmdir()
+                history = trail.events.jsonl.path.read_bytes()
+                restored = Trail(root)
+                assert restored.files.ids == trail.files.ids
+                assert restored.dirs.ids == trail.dirs.ids
+                assert restored.files.by_pos[0] is restored.files[csv]
+                assert restored.files.by_pos[0].id == file_entry.id
+                assert restored.dirs.by_pos[-1].id == directory_entry.id
+                assert restored.entries.by_pos[-1] is restored.dirs[directory]
+                assert restored.events.jsonl.path.read_bytes() == history
+                restored.remove(csv, directory)
+                assert restored.files.ids == []
+                assert restored.dirs.ids == [root_entry.id]
+                reloaded = Trail(root)
+                assert reloaded.files.by_pos[:] == []
+                assert reloaded.dirs.ids == [root_entry.id]
+
+        asyncio.run(run())
+
 
 if __name__ == "__main__":
     if sys.platform != "linux":
@@ -412,6 +496,14 @@ if __name__ == "__main__":
         (
             'test_add_and_remove_return_entries_or_lists',
             'single paths return entries and multiple paths return lists',
+        ),
+        (
+            'test_entry_positions_follow_tracking_changes',
+            'entry positions follow tracking changes',
+        ),
+        (
+            'test_discovered_entries_survive_reload',
+            'discovered entries retain positions and identities after reload',
         ),
     ]
 

@@ -7,9 +7,10 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, overload
+from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
+from .bypos import ByPos
 from .entry import Entry
 from .node import Node
 
@@ -289,11 +290,11 @@ class JSONL(Node):
                     if entry is None:
                         entry_path = Path(record["src_path"]).expanduser().resolve()
                         if record.get("is_directory", entry_path.is_dir()):
-                            entry = Dir(trail.dirs)
+                            entry = Dir(path=entry_path, id=entry_id)
+                            entry._parent = trail.dirs
                         else:
-                            entry = File(trail.files)
-                        entry.path = entry_path
-                        entry.id = entry_id
+                            entry = File(path=entry_path, id=entry_id)
+                            entry._parent = trail.files
                     entries[entry_id] = entry
                 event = Event.from_record(trail=trail, resolved_entry=entry, **record)
                 if event.id in loaded:
@@ -334,29 +335,6 @@ class JSONL(Node):
             file.write(text.encode("utf-8"))
 
 
-class ByPos(Node):
-    _parent: Events
-
-    @overload
-    def __getitem__(self, item: int) -> Event: ...
-
-    @overload
-    def __getitem__(self, item: slice) -> list[Event]: ...
-
-    def __getitem__(self, item: int | slice) -> Event | list[Event]:
-        events = self._parent
-        if isinstance(item, slice):
-            return [
-                events[identifier]
-                for identifier in events.ids[item]
-            ]
-        identifier = events.ids[item]
-        return events[identifier]
-
-    def __len__(self) -> int:
-        return len(self._parent.ids)
-
-
 class Events(
     UserDict[int, Event],
     Node,
@@ -375,7 +353,7 @@ class Events(
         return JSONL(self)
 
     @cached_property
-    def by_pos(self) -> ByPos:
+    def by_pos(self) -> ByPos[Event]:
         """Allows for Events to be indexed by integer position, rather than ID or path."""
         return ByPos(self)
 

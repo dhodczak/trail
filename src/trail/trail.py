@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import overload
 from uuid import uuid4
 
+from .bypos import ByPos
 from .dir import Dirs
 from .entry import Entry, EntryKey
 from .event import AddEntryEvent, Events, RemoveEntryEvent
@@ -65,6 +66,25 @@ class EntryLookup(
     """
 
     _parent: Trail
+
+    @property
+    def ids(self) -> list[int]:
+        return self._parent.files.ids + self._parent.dirs.ids
+
+    @cached_property
+    def by_pos(self) -> ByPos[Entry]:
+        return ByPos(self)
+
+    def __repr__(self) -> str:
+        lines = [f'Entries ({len(self)})']
+        for position, identifier in enumerate(self.ids):
+            entry = self[identifier]
+            lines.append(f'    {position}. {type(entry).__name__}')
+            lines.extend(
+                f'        {name}: {value!r}'
+                for name, value in entry._repr_items()
+            )
+        return '\n'.join(lines)
 
     @overload
     def __getitem__(self, key: EntryKey) -> Entry: ...
