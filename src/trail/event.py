@@ -10,11 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
-from .bypos import ByPos
 from .entry import Entry
-from .fileview import file_repr
 from .node import Node
-from .util import normalize_id
+from .util import ByPos, file_repr, normalize_id
 
 if TYPE_CHECKING:
     from .trail import Trail
@@ -347,7 +345,26 @@ class Events(
     UserDict[str, Event],
     Node,
 ):
-    """A collection and descriptor for binding filtered views of change records."""
+    """
+    A collection of Event objects that have occurred in a Trail.
+
+    >>> trail.events
+    Events (9)
+        0. AddEntryEvent
+            id: '8a43da699bf242e7976e7bb74df81d0f'
+            timestamp: '06:02:12.114'
+            src_path: '/tmp/tmpbzh09nb5/folder'
+        1. WatchdogEvent
+            id: 'c2152a8b8f31416abbfe7106fce8cb6c'
+            timestamp: '06:02:12.130'
+            src_path: '/tmp/tmpbzh09nb5/folder/new.csv'
+            event_type: 'created'
+        2. WatchdogEvent
+            id: '620c0779453a4e5db975fa11e9efac7b'
+            timestamp: '06:02:12.130'
+            src_path: '/tmp/tmpbzh09nb5/folder/new.csv'
+            event_type: 'opened'
+    """
 
     _parent: Trail
 

@@ -10,6 +10,14 @@ from .entry import Entries, Entry
 
 
 class Dir(Entry):
+    """
+    Represents a directory entry tracked by a Trail.
+
+    >>> trail.dirs.by_pos[0]
+    Dir
+        id: 'decbe4d041fa4c1893da693c70ad9105'
+        path: '/tmp/tmpbzh09nb5/folder'
+    """
     _parent: Dirs
 
     @cached_property
@@ -120,4 +128,16 @@ class Dir(Entry):
 
 
 class Dirs(Entries[Dir]):
+    """
+    A collection of Dir entries tracked by a Trail.
+
+    >>> trail.dirs
+    Dirs (2)
+        0. Dir
+            id: 'decbe4d041fa4c1893da693c70ad9105'
+            path: '/tmp/tmpbzh09nb5/folder'
+        1. Dir
+            id: 'f48807577f1d454a9caa6814af452d8e'
+            path: '/tmp/tmpbzh09nb5/folder/nested'
+    """
     entry_type = Dir

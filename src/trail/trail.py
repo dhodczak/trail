@@ -7,14 +7,12 @@ from pathlib import Path
 from typing import overload
 from uuid import uuid4
 
-from .bypos import ByPos
 from .dir import Dirs
 from .entry import Entry, EntryKey
 from .event import AddEntryEvent, Events, RemoveEntryEvent
 from .file import Files
-from .fileview import file_repr, list_repr
 from .node import Node
-from .util import normalize_id
+from .util import ByPos, file_repr, list_repr, normalize_id
 from .watchdog import Watchdog
 
 
@@ -148,6 +146,15 @@ class Trail(Node):
         """
         Returns a Watchdog instance, which wraps the `watchdog` library's functionality
         for monitoring filesystem events.
+
+        >>> self.watchdog
+        Watchdog
+            running: True
+            watches: [
+                '/tmp/tmpbzh09nb5/folder',
+                '/tmp/tmpbzh09nb5',
+                '/tmp/tmpbzh09nb5/folder/nested',
+            ]
         """
         return Watchdog(self)
 
@@ -155,6 +162,15 @@ class Trail(Node):
     def files(self):
         """
         Returns a Files instance, which contains the mapping of IDs and paths to tracked File entries in the Trail.
+
+        >>> self.files
+        Files (2)
+            0. File
+                id: '41d3f259a5fc4c1fa13c516cf892f56e'
+                path: '/tmp/tmpbzh09nb5/folder/new.csv'
+            1. File
+                id: '6e564e209ff44bafa32cf75d9ffcd844'
+                path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
         """
         return Files(self)
 
@@ -162,6 +178,15 @@ class Trail(Node):
     def dirs(self):
         """
         Returns a Dirs instance, which contains the mapping of IDs and paths to tracked Dir entries in the Trail.
+
+        >>> self.dirs
+        Dirs (2)
+            0. Dir
+                id: 'decbe4d041fa4c1893da693c70ad9105'
+                path: '/tmp/tmpbzh09nb5/folder'
+            1. Dir
+                id: 'f48807577f1d454a9caa6814af452d8e'
+                path: '/tmp/tmpbzh09nb5/folder/nested'
         """
         return Dirs(self)
 
@@ -169,6 +194,21 @@ class Trail(Node):
     def entries(self) -> EntryLookup:
         """
         Returns an EntryLookup, which provides a unified interface to access both File and Dir entries in the Trail.
+
+        >>> self.entries
+        Entries (4)
+            0. File
+                id: '41d3f259a5fc4c1fa13c516cf892f56e'
+                path: '/tmp/tmpbzh09nb5/folder/new.csv'
+            1. File
+                id: '6e564e209ff44bafa32cf75d9ffcd844'
+                path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
+            2. Dir
+                id: 'decbe4d041fa4c1893da693c70ad9105'
+                path: '/tmp/tmpbzh09nb5/folder'
+            3. Dir
+                id: 'f48807577f1d454a9caa6814af452d8e'
+                path: '/tmp/tmpbzh09nb5/folder/nested'
         """
         return EntryLookup(self)
 
@@ -183,7 +223,26 @@ class Trail(Node):
 
     @cached_property
     def events(self):
-        """Returns an Events instance, which manages the collection of events that have occurred in the Trail."""
+        """
+        Returns an Events instance, which manages the collection of events that have occurred in the Trail.
+
+        >>> self.events
+        Events (9)
+            0. AddEntryEvent
+                id: '8a43da699bf242e7976e7bb74df81d0f'
+                timestamp: '06:02:12.114'
+                src_path: '/tmp/tmpbzh09nb5/folder'
+            1. WatchdogEvent
+                id: 'c2152a8b8f31416abbfe7106fce8cb6c'
+                timestamp: '06:02:12.130'
+                src_path: '/tmp/tmpbzh09nb5/folder/new.csv'
+                event_type: 'created'
+            2. WatchdogEvent
+                id: '620c0779453a4e5db975fa11e9efac7b'
+                timestamp: '06:02:12.130'
+                src_path: '/tmp/tmpbzh09nb5/folder/new.csv'
+                event_type: 'opened'
+        """
         return Events(self)
 
     def __init__(

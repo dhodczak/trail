@@ -9,6 +9,14 @@ from .entry import Entries, Entry
 
 
 class File(Entry):
+    """
+    Represents a file entry tracked by a Trail.
+
+    >>> trail.files.by_pos[0]
+    File
+        id: '41d3f259a5fc4c1fa13c516cf892f56e'
+        path: '/tmp/tmpbzh09nb5/folder/new.csv'
+    """
     _parent: Files
 
     @cached_property
@@ -91,4 +99,16 @@ class File(Entry):
 
 
 class Files(Entries[File]):
+    """
+    A collection of File entries tracked by a Trail.
+
+    >>> trail.files
+    Files (2)
+        0. File
+            id: '41d3f259a5fc4c1fa13c516cf892f56e'
+            path: '/tmp/tmpbzh09nb5/folder/new.csv'
+        1. File
+            id: '6e564e209ff44bafa32cf75d9ffcd844'
+            path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
+    """
     entry_type = File

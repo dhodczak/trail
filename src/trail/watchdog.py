@@ -26,8 +26,8 @@ from watchdog.observers.api import BaseObserver, ObservedWatch
 
 from .entry import Entry
 from .event import WatchdogEvent
-from .fileview import list_repr
 from .node import Node
+from .util import list_repr
 
 if TYPE_CHECKING:
     from .trail import Trail
@@ -55,7 +55,16 @@ class Handler(FileSystemEventHandler, Node):
 
 class Watchdog(Node):
     """
-    Observes the directories backing the Trail's entries.
+    Observes the directories backing the Trail's entries for filesystem events.
+
+    >>> trail.watchdog
+    Watchdog
+        running: True
+        watches: [
+            '/tmp/tmpbzh09nb5/folder',
+            '/tmp/tmpbzh09nb5',
+            '/tmp/tmpbzh09nb5/folder/nested',
+        ]
     """
 
     _parent: Trail
@@ -300,6 +309,7 @@ class Watchdog(Node):
             for event in batch:
                 if event.apply(trail) is None:
                     continue
+                # todo: event.apply should contain the logic for this, not watchdog.apply
                 if event.is_directory and event.event_type in ("created", "moved"):
                     path = Path(event.dest_path or event.src_path)
                     if path.is_dir() and not trail._ignored(path):

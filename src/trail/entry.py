@@ -8,9 +8,8 @@ from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
-from .bypos import ByPos
 from .node import Node
-from .util import normalize_id
+from .util import ByPos, normalize_id
 
 if TYPE_CHECKING:
     from .event import Event
@@ -135,7 +134,24 @@ class Entry(Node):
 
 
 class Entries[E: Entry](Node):
-    """A collection of Entry objects tracked by a Trail."""
+    """
+    A collection of Entry objects (File or Dir) tracked by a Trail.
+
+    >>> trail.entries
+    Entries (4)
+        0. File
+            id: '41d3f259a5fc4c1fa13c516cf892f56e'
+            path: '/tmp/tmpbzh09nb5/folder/new.csv'
+        1. File
+            id: '6e564e209ff44bafa32cf75d9ffcd844'
+            path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
+        2. Dir
+            id: 'decbe4d041fa4c1893da693c70ad9105'
+            path: '/tmp/tmpbzh09nb5/folder'
+        3. Dir
+            id: 'f48807577f1d454a9caa6814af452d8e'
+            path: '/tmp/tmpbzh09nb5/folder/nested'
+    """
     _parent: Trail
     entry_type: type[E]
 

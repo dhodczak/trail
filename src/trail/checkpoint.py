@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from .fileview import file_repr
 from .node import Node
-from .util import normalize_id
+from .util import file_repr, normalize_id
 
 if TYPE_CHECKING:
     from .event import Event
