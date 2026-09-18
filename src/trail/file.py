@@ -6,16 +6,10 @@ from typing import Self
 from uuid import uuid4
 
 from .entry import Entries, Entry
-from .fileview import file_repr
 
 
 class File(Entry):
     _parent: Files
-
-    def __repr__(self) -> str:
-        if self.path.suffix.lower() != '.csv':
-            return super().__repr__()
-        return file_repr(type(self).__name__, self.path, self._repr_items())
 
     @cached_property
     def _parent(self) -> Files:

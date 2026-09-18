@@ -12,7 +12,7 @@ from .dir import Dirs
 from .entry import Entry, EntryKey
 from .event import AddEntryEvent, Events, RemoveEntryEvent
 from .file import Files
-from .fileview import file_repr
+from .fileview import file_repr, list_repr
 from .node import Node
 from .util import normalize_id
 from .watchdog import Watchdog
@@ -140,6 +140,9 @@ class EntryLookup(
 
 
 class Trail(Node):
+    # paths listed by __repr__ before the remainder is summarized
+    repr_limit = 10
+
     @cached_property
     def watchdog(self):
         """
@@ -255,3 +258,27 @@ class Trail(Node):
 
     def pull(self):
         """Placeholder for possible remote synchronization"""
+
+    def __repr__(self) -> str:
+        if self.dir is None:
+            directory = None
+        else:
+            directory = str(self.dir)
+        lines = [
+            type(self).__name__,
+            f'    id: {self.id!r}',
+            f'    dir: {directory!r}',
+        ]
+        entries = self.entries
+        identifiers = entries.ids
+        lines.extend(
+            list_repr(
+                'entries',
+                (
+                    str(entries[identifier].path)
+                    for identifier in identifiers[:self.repr_limit]
+                ),
+                len(identifiers),
+            )
+        )
+        return '\n'.join(lines)

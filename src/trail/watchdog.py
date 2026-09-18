@@ -26,6 +26,7 @@ from watchdog.observers.api import BaseObserver, ObservedWatch
 
 from .entry import Entry
 from .event import WatchdogEvent
+from .fileview import list_repr
 from .node import Node
 
 if TYPE_CHECKING:
@@ -59,6 +60,30 @@ class Watchdog(Node):
 
     _parent: Trail
     debounce = 0.1
+    # directories listed by __repr__ before the remainder is summarized
+    repr_limit = 10
+
+    def __repr__(self) -> str:
+        # while dormant the membership is all that remains of the watches
+        if self.watches is None:
+            directories = list(self.dir2ids)
+        else:
+            directories = list(self.watches)
+        lines = [
+            type(self).__name__,
+            f'    running: {self.running!r}',
+        ]
+        lines.extend(
+            list_repr(
+                'watches',
+                (
+                    str(directory)
+                    for directory in directories[:self.repr_limit]
+                ),
+                len(directories),
+            )
+        )
+        return '\n'.join(lines)
 
     @cached_property
     def handler(self) -> Handler:

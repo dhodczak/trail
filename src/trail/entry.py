@@ -43,11 +43,12 @@ class Entry(Node):
             yield entry_field.name, value
 
     def __repr__(self) -> str:
-        attributes = ', '.join(
-            f'{name}={value!r}'
+        lines = [type(self).__name__]
+        lines.extend(
+            f'    {name}: {value!r}'
             for name, value in self._repr_items()
         )
-        return f'{type(self).__name__}({attributes})'
+        return '\n'.join(lines)
 
     @classmethod
     def from_path(
