@@ -21,6 +21,7 @@ EntryKey = str | Path
 
 @dataclass(kw_only=True, eq=False, repr=False)
 class Entry(Node):
+    """Represents a file system entry (file or directory) tracked by a Trail."""
     id: str = field(default_factory=lambda: uuid4().hex)
     path: Path
 
@@ -88,22 +89,27 @@ class Entry(Node):
 
     @property
     def name(self) -> str:
+        """Name of the entry (last component of the path)."""
         return self.path.name
 
     @property
     def directory(self) -> Path:
+        """Directory containing the entry."""
         return self.path.parent
 
     @cached_property
     def size(self) -> int:
+        """Size of the entry, in bytes."""
         return self.path.stat().st_size
 
     @cached_property
     def mtime(self) -> float:
+        """Last modification time of the entry, in seconds since the epoch."""
         return self.path.stat().st_mtime
 
     @cached_property
     def events(self) -> dict[str, Event]:
+        """Events associated with the entry."""
         return {}
 
     @property
@@ -117,6 +123,7 @@ class Entry(Node):
         raise NotImplementedError
 
     def remove(self) -> None:
+        """Remove the entry from the tracked Entries collection."""
         collection = self._parent
         if collection is None or collection.id2entry.get(self.id) is not self:
             return
@@ -127,6 +134,7 @@ class Entry(Node):
 
 
 class Entries[E: Entry](Node):
+    """A collection of Entry objects tracked by a Trail."""
     _parent: Trail
     entry_type: type[E]
 

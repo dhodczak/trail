@@ -527,6 +527,53 @@ class TestTrail:
             assert csv not in reloaded.entries
             assert reloaded.events.ids == restored.events.ids
 
+    def test_folder_auto_tracks_created_files_and_nested_subdirectories(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                trail = Trail(root)
+                folder = root / 'folder'
+                folder.mkdir()
+                folder_entry = trail.add(folder)
+
+                async with trail.watchdog.context():
+                    new_file = folder / 'new.csv'
+                    new_file.write_text('name,value\nnew,1\n', encoding='utf-8')
+                    async with asyncio.timeout(5):
+                        while new_file not in trail.files:
+                            await asyncio.sleep(0.01)
+                    new_file_entry = trail.files[new_file]
+
+                    previous = len(trail.events)
+                    with new_file.open(encoding='utf-8') as stream:
+                        assert stream.read() == 'name,value\nnew,1\n'
+                    async with asyncio.timeout(5):
+                        while (
+                            opened := self.opened_event(trail, new_file, previous)
+                        ) is None:
+                            await asyncio.sleep(0.01)
+                    assert opened.entry is new_file_entry
+
+                    subdirectory = folder / 'nested'
+                    subdirectory.mkdir()
+                    async with asyncio.timeout(5):
+                        while subdirectory not in trail.dirs:
+                            await asyncio.sleep(0.01)
+                    subdirectory_entry = trail.dirs[subdirectory]
+
+                    nested_file = subdirectory / 'nested.csv'
+                    nested_file.write_text('name,value\nnested,2\n', encoding='utf-8')
+                    async with asyncio.timeout(5):
+                        while nested_file not in trail.files:
+                            await asyncio.sleep(0.01)
+                    nested_file_entry = trail.files[nested_file]
+
+                assert folder_entry.path == folder
+                assert new_file_entry.path == new_file
+                assert subdirectory_entry.path == subdirectory
+                assert nested_file_entry.path == nested_file
+
+        asyncio.run(run())
+
 
 if __name__ == "__main__":
     if sys.platform != "linux":
@@ -535,49 +582,53 @@ if __name__ == "__main__":
     test_object = TestTrail()
     tests = [
         ("test_pathless_add_and_open", "pathless trail tracks an opened CSV"),
+        # (
+        #     "test_persistent_add_open_and_new_session",
+        #     "persistent trail survives new sessions",
+        # ),
+        # (
+        #     "test_removed_file_stays_untracked_after_new_session",
+        #     "removed files remain untracked",
+        # ),
+        # (
+        #     "test_deleted_csv_history_can_be_restored",
+        #     "deleted CSV history is restored",
+        # ),
+        # (
+        #     "test_add_remove_and_readd_history_can_be_restored",
+        #     "tracking changes replay with stable entry identities",
+        # ),
+        # (
+        #     'test_by_pos_slicing_after_tracking_changes',
+        #     'positional slicing follows real tracking changes',
+        # ),
+        # (
+        #     'test_by_pos_survives_file_changes_and_reload',
+        #     'positional indexing survives real file changes and reload',
+        # ),
+        # (
+        #     'test_add_and_remove_return_entries_or_lists',
+        #     'single paths return entries and multiple paths return lists',
+        # ),
+        # (
+        #     'test_entry_positions_follow_tracking_changes',
+        #     'entry positions follow tracking changes',
+        # ),
+        # (
+        #     'test_discovered_entries_survive_reload',
+        #     'discovered entries retain positions and identities after reload',
+        # ),
+        # (
+        #     'test_hex_ids_support_lookup_and_persistence',
+        #     'hexadecimal IDs support lookup and persistence',
+        # ),
+        # (
+        #     'test_legacy_integer_ids_are_normalized_on_reload',
+        #     'legacy integer IDs normalize to hexadecimal strings on reload',
+        # ),
         (
-            "test_persistent_add_open_and_new_session",
-            "persistent trail survives new sessions",
-        ),
-        (
-            "test_removed_file_stays_untracked_after_new_session",
-            "removed files remain untracked",
-        ),
-        (
-            "test_deleted_csv_history_can_be_restored",
-            "deleted CSV history is restored",
-        ),
-        (
-            "test_add_remove_and_readd_history_can_be_restored",
-            "tracking changes replay with stable entry identities",
-        ),
-        (
-            'test_by_pos_slicing_after_tracking_changes',
-            'positional slicing follows real tracking changes',
-        ),
-        (
-            'test_by_pos_survives_file_changes_and_reload',
-            'positional indexing survives real file changes and reload',
-        ),
-        (
-            'test_add_and_remove_return_entries_or_lists',
-            'single paths return entries and multiple paths return lists',
-        ),
-        (
-            'test_entry_positions_follow_tracking_changes',
-            'entry positions follow tracking changes',
-        ),
-        (
-            'test_discovered_entries_survive_reload',
-            'discovered entries retain positions and identities after reload',
-        ),
-        (
-            'test_hex_ids_support_lookup_and_persistence',
-            'hexadecimal IDs support lookup and persistence',
-        ),
-        (
-            'test_legacy_integer_ids_are_normalized_on_reload',
-            'legacy integer IDs normalize to hexadecimal strings on reload',
+            'test_folder_auto_tracks_created_files_and_nested_subdirectories',
+            'folders auto-track created files and nested subdirectories',
         ),
     ]
 

@@ -168,7 +168,7 @@ class RemoveEntryEvent(Event):
 class WatchdogEvent(Event):
     src_path: str
     dest_path: str = ""
-    event_type: str = field(default="", repr=False)
+    event_type: str = ""
     is_directory: bool = field(default=False, repr=False)
     is_synthetic: bool = field(default=False, repr=False)
     entry: Entry | None = field(default=None, init=False, repr=False)
@@ -417,11 +417,7 @@ class Events(
     def __repr__(self) -> str:
         lines = [f'{type(self).__name__} ({len(self)})']
         for position, event in enumerate(self.data.values()):
-            heading = f'    {position}. {type(event).__name__}'
-            event_type = getattr(event, 'event_type', '')
-            if event_type:
-                heading += f' [{event_type}]'
-            lines.append(heading)
+            lines.append(f'    {position}. {type(event).__name__}')
             for name, value in event._repr_items():
                 lines.append(f'        {name}: {value!r}')
         return '\n'.join(lines)
