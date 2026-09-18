@@ -12,12 +12,17 @@ from .dir import Dirs
 from .entry import Entry, EntryKey
 from .event import AddEntryEvent, Events, RemoveEntryEvent
 from .file import Files
+from .fileview import file_repr
 from .node import Node
+from .util import normalize_id
 from .watchdog import Watchdog
 
 
 class JSON(Node):
     _parent: Trail
+
+    def __repr__(self) -> str:
+        return file_repr(type(self).__name__, self.path)
 
     @property
     def record(self) -> dict:
@@ -45,6 +50,8 @@ class JSON(Node):
             data = json.load(f)
         trail = self._parent
         for key, value in data.items():
+            if key == 'id':
+                value = normalize_id(value)
             self._setnested(trail, key, value)
 
     @cached_property
@@ -68,7 +75,7 @@ class EntryLookup(
     _parent: Trail
 
     @property
-    def ids(self) -> list[int]:
+    def ids(self) -> list[str]:
         return self._parent.files.ids + self._parent.dirs.ids
 
     @cached_property
@@ -97,19 +104,25 @@ class EntryLookup(
         key: EntryKey | Iterable[EntryKey],
     ) -> Entry | tuple[Entry, ...]:
         """Returns an Entry object (File, Dir) or a tuple of Entry objects based on the provided key(s)."""
-        if isinstance(key, (str, Path, int)):
+        if isinstance(key, str):
+            entry = self._parent.files.id2entry.get(key)
+            if entry is None:
+                entry = self._parent.dirs.id2entry.get(key)
+            if entry is not None:
+                return entry
+        if isinstance(key, (str, Path)):
             try:
                 return self._parent.files[key]
             except KeyError:
                 return self._parent.dirs[key]
         selected = []
         for value in key:
-            if not isinstance(value, (str, Path, int)):
+            if not isinstance(value, (str, Path)):
                 raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
 
-    def __iter__(self) -> Iterator[int]:
+    def __iter__(self) -> Iterator[str]:
         """Iterates across all Entry IDs in the Trail, including both files and directories."""
         yield from self._parent.files
         yield from self._parent.dirs
@@ -189,12 +202,12 @@ class Trail(Node):
             self.json.dump()
 
     @cached_property
-    def id(self) -> int:
+    def id(self) -> str:
         """
-        Assigns a unique identifier to the Trail instance using a UUID4 integer.
+        Assigns a unique identifier to the Trail instance using a UUID4 hex string.
         Performed as a lazy attribute so that `self.json.load()` may take precedence.
         """
-        return uuid4().int
+        return uuid4().hex
 
     def add(self, *paths: str | Path) -> Entry | list[Entry]:
         """Adds the specified filesystem paths to the Trail for tracking."""

@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from .fileview import file_repr
 from .node import Node
+from .util import normalize_id
 
 if TYPE_CHECKING:
     from .event import Event
@@ -19,25 +21,34 @@ if TYPE_CHECKING:
 
 @dataclass
 class Checkpoint:
-    id: int = field(default_factory=lambda: uuid4().int, kw_only=True)
+    id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
     timestamp: datetime = field(
         default_factory=lambda: datetime.now(UTC),
         kw_only=True,
     )
-    events: list[Event | int]
+    events: list[Event | str]
     message: str = ""
     author: str | None = None
+
+    def __post_init__(self) -> None:
+        self.id = normalize_id(self.id)
 
     @classmethod
     def from_record(cls, /, **record) -> Checkpoint:
         record["timestamp"] = datetime.fromisoformat(record["timestamp"])
+        record['events'] = [
+            normalize_id(identifier)
+            for identifier in record['events']
+        ]
         return cls(**record)
 
     def to_record(self) -> dict:
-        event_ids = [
-            event.id
-            for event in self.events
-        ]
+        event_ids = []
+        for event in self.events:
+            if isinstance(event, str):
+                event_ids.append(event)
+            else:
+                event_ids.append(event.id)
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat(),
@@ -50,6 +61,9 @@ class Checkpoint:
 class JSONL(Node):
     _parent: Checkpoints
 
+    def __repr__(self) -> str:
+        return file_repr(type(self).__name__, self.path)
+
     @property
     def path(self) -> Path | None:
         trail = self._trail
@@ -61,7 +75,7 @@ class JSONL(Node):
         path = self.path
         if path is None or not path.exists():
             return
-        loaded: dict[int, Checkpoint] = {}
+        loaded: dict[str, Checkpoint] = {}
         with path.open(encoding="utf-8") as file:
             for line in file:
                 if not line.strip():
@@ -103,7 +117,7 @@ class JSONL(Node):
             file.write(text.encode("utf-8"))
 
 
-class Checkpoints(UserDict[int, Checkpoint], Node):
+class Checkpoints(UserDict[str, Checkpoint], Node):
     _parent: Trail
 
     @cached_property
@@ -121,7 +135,7 @@ class Checkpoints(UserDict[int, Checkpoint], Node):
 
     def __setitem__(
         self,
-        key: int,
+        key: str,
         value: Checkpoint,
     ) -> None:
         if not isinstance(value, Checkpoint):

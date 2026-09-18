@@ -43,7 +43,7 @@ class Dir(Entry):
         if trail._ignored(path):
             raise ValueError(f"Cannot track Trail metadata: {path}")
         while self.id in trail.files.id2entry:
-            self.id = uuid4().int
+            self.id = uuid4().hex
         previous_path = self.path
         self.path = path
         watchdog = self._watchdog

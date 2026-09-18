@@ -76,7 +76,7 @@ class Watchdog(Node):
         return {}
 
     @cached_property
-    def dir2ids(self) -> dict[Path, set[int]]:
+    def dir2ids(self) -> dict[Path, set[str]]:
         """
         Maps directories to the entry IDs requiring observation. Releasing the last ID removes
         the directory's watch. Survives clear() so start() can recreate watches on restart.
@@ -109,7 +109,7 @@ class Watchdog(Node):
     def release(
         self,
         directory: Path,
-        identifier: int,
+        identifier: str,
     ) -> None:
         ids = self.dir2ids.get(directory)
         if ids is None or identifier not in ids:

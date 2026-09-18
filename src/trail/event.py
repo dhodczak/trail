@@ -12,7 +12,9 @@ from uuid import uuid4
 
 from .bypos import ByPos
 from .entry import Entry
+from .fileview import file_repr
 from .node import Node
+from .util import normalize_id
 
 if TYPE_CHECKING:
     from .trail import Trail
@@ -23,8 +25,11 @@ class Event:
     classes: ClassVar[dict[str, type[Event]]] = {}
 
     entry: Entry | None = field(default=None, init=False, repr=False)
-    id: int = field(default_factory=lambda: uuid4().int, repr=True)
+    id: str = field(default_factory=lambda: uuid4().hex, repr=True)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        self.id = normalize_id(self.id)
 
     def _repr_items(self) -> Iterator[tuple[str, object]]:
         for event_field in fields(self):
@@ -79,7 +84,7 @@ class Event:
             event_cls = cls
         if event_cls is None:
             raise ValueError(f"Unknown event class: {name!r}")
-        entry_id = record.pop("entry")
+        entry_id = normalize_id(record.pop("entry"))
         record["timestamp"] = datetime.fromisoformat(record["timestamp"])
         deferred = {
             field.name: record.pop(field.name)
@@ -260,6 +265,9 @@ class JupyterEvent(Event):
 class JSONL(Node):
     _parent: Events
 
+    def __repr__(self) -> str:
+        return file_repr(type(self).__name__, self.path)
+
     @property
     def path(self) -> Path | None:
         trail = self._trail
@@ -276,14 +284,14 @@ class JSONL(Node):
         trail = self._trail
         if path is None or not path.exists():
             return
-        loaded: dict[int, Event] = {}
-        entries: dict[int, Entry] = {}
+        loaded: dict[str, Event] = {}
+        entries: dict[str, Entry] = {}
         with path.open(encoding="utf-8") as file:
             for line in file:
                 if not line.strip():
                     continue
                 record = json.loads(line)
-                entry_id = record["entry"]
+                entry_id = normalize_id(record["entry"])
                 entry = entries.get(entry_id)
                 if entry is None:
                     entry = trail.entries.get(entry_id)
@@ -336,7 +344,7 @@ class JSONL(Node):
 
 
 class Events(
-    UserDict[int, Event],
+    UserDict[str, Event],
     Node,
 ):
     """A collection and descriptor for binding filtered views of change records."""
@@ -346,7 +354,7 @@ class Events(
     def __init__(self, parent: Trail) -> None:
         UserDict.__init__(self)
         Node.__init__(self, parent)
-        self.ids: list[int] = []
+        self.ids: list[str] = []
 
     @cached_property
     def jsonl(self) -> JSONL:
@@ -359,7 +367,7 @@ class Events(
 
     def update(
             self,
-            m: Mapping[int, Event] | Iterable[tuple[int, Event]],
+            m: Mapping[str, Event] | Iterable[tuple[str, Event]],
             /,
     ) -> None:
         batch = dict(m)
@@ -383,7 +391,7 @@ class Events(
 
     def __setitem__(
         self,
-        key: int,
+        key: str,
         value: Event,
     ) -> None:
         if not isinstance(value, Event):
@@ -396,7 +404,7 @@ class Events(
             self.data[key] = value
             self.ids.append(key)
 
-    def __delitem__(self, key: int) -> None:
+    def __delitem__(self, key: str) -> None:
         del self.data[key]
         self.ids.remove(key)
         self.jsonl.write()

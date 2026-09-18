@@ -10,17 +10,18 @@ from uuid import uuid4
 
 from .bypos import ByPos
 from .node import Node
+from .util import normalize_id
 
 if TYPE_CHECKING:
     from .event import Event
     from .trail import Trail
 
-EntryKey = str | Path | int
+EntryKey = str | Path
 
 
 @dataclass(kw_only=True, eq=False, repr=False)
 class Entry(Node):
-    id: int = field(default_factory=lambda: uuid4().int)
+    id: str = field(default_factory=lambda: uuid4().hex)
     path: Path
 
     if TYPE_CHECKING:
@@ -28,6 +29,7 @@ class Entry(Node):
 
     def __post_init__(self) -> None:
         Node.__init__(self)
+        self.id = normalize_id(self.id)
         self.path = Path(self.path).expanduser().resolve()
 
     def _repr_items(self) -> Iterator[tuple[str, object]]:
@@ -101,7 +103,7 @@ class Entry(Node):
         return self.path.stat().st_mtime
 
     @cached_property
-    def events(self) -> dict[int, Event]:
+    def events(self) -> dict[str, Event]:
         return {}
 
     @property
@@ -130,7 +132,7 @@ class Entries[E: Entry](Node):
 
     def __init__(self, parent: Trail | None = None) -> None:
         Node.__init__(self, parent)
-        self.ids: list[int] = []
+        self.ids: list[str] = []
 
     @cached_property
     def by_pos(self) -> ByPos[E]:
@@ -152,7 +154,7 @@ class Entries[E: Entry](Node):
         return {}
 
     @cached_property
-    def id2entry(self) -> dict[int, E]:
+    def id2entry(self) -> dict[str, E]:
         return {}
 
     @overload
@@ -165,26 +167,26 @@ class Entries[E: Entry](Node):
         self,
         key: EntryKey | Iterable[EntryKey],
     ) -> E | tuple[E, ...]:
-        if isinstance(key, int):
+        if isinstance(key, str) and key in self.id2entry:
             return self.id2entry[key]
         if isinstance(key, (str, Path)):
             return self.path2entry[Path(key).expanduser().resolve()]
         selected = []
         for value in key:
-            if not isinstance(value, (str, Path, int)):
+            if not isinstance(value, (str, Path)):
                 raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
 
-    def __iter__(self) -> Iterator[int]:
+    def __iter__(self) -> Iterator[str]:
         return iter(self.id2entry)
 
     def __len__(self) -> int:
         return len(self.id2entry)
 
     def __contains__(self, key: EntryKey) -> bool:
-        if isinstance(key, int):
-            return key in self.id2entry
+        if isinstance(key, str) and key in self.id2entry:
+            return True
         return Path(key).expanduser().resolve() in self.path2entry
 
     @overload
@@ -207,7 +209,7 @@ class Entries[E: Entry](Node):
         except KeyError:
             return default
 
-    def items(self) -> ItemsView[int, E]:
+    def items(self) -> ItemsView[str, E]:
         return self.id2entry.items()
 
     def add(self, *paths: str | Path) -> tuple[E, ...]:
@@ -228,7 +230,7 @@ class Entries[E: Entry](Node):
                     entry.id in self._trail.files
                     or entry.id in self._trail.dirs
                 ):
-                    entry.id = uuid4().int
+                    entry.id = uuid4().hex
                 entry.add()
                 registered.append(entry)
         except Exception:

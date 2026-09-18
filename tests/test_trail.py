@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from trail import Trail
+from trail.checkpoint import Checkpoint
 from trail.event import AddEntryEvent, RemoveEntryEvent, WatchdogEvent
 
 
@@ -461,6 +462,71 @@ class TestTrail:
 
         asyncio.run(run())
 
+    def test_hex_ids_support_lookup_and_persistence(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            trail = Trail(root)
+            entry = trail.add(csv)
+            directory = trail.add(root)
+            checkpoint = Checkpoint(events=trail.events.by_pos[:])
+            identifiers = [
+                trail.id,
+                entry.id,
+                directory.id,
+                checkpoint.id,
+                *trail.events.ids,
+            ]
+            for identifier in identifiers:
+                assert isinstance(identifier, str)
+                assert len(identifier) == 32
+                assert set(identifier) <= set('0123456789abcdef')
+
+            assert trail.entries[entry.id] is entry
+            assert trail.entries[directory.id] is directory
+            assert trail.files[entry.id] is trail.files[str(csv)]
+            assert trail.dirs[directory.id] is trail.dirs[root]
+            assert entry.id in trail.files
+            assert directory.id in trail.dirs
+            assert trail.entries[[entry.id, directory.id]] == (entry, directory)
+            checkpoint_record = checkpoint.to_record()
+            assert checkpoint_record['events'] == trail.events.ids
+            restored_checkpoint = Checkpoint.from_record(**checkpoint_record)
+            assert restored_checkpoint.to_record() == checkpoint_record
+
+            restored = Trail(root)
+            assert restored.id == trail.id
+            assert restored.entries[entry.id].path == csv
+            assert restored.entries[directory.id].path == root
+            assert restored.events.ids == trail.events.ids
+
+    def test_legacy_integer_ids_are_normalized_on_reload(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            trail = Trail(root)
+            entry = trail.add(csv)
+            event = trail.events.by_pos[0]
+            legacy_metadata = {'id': int(trail.id, 16)}
+            trail.json.path.write_text(json.dumps(legacy_metadata), encoding='utf-8')
+            legacy_event = event.to_record()
+            legacy_event['id'] = int(event.id, 16)
+            legacy_event['entry'] = int(entry.id, 16)
+            trail.events.jsonl.path.write_text(
+                json.dumps(legacy_event) + '\n',
+                encoding='utf-8',
+            )
+
+            restored = Trail(root)
+            assert restored.id == trail.id
+            assert restored.files.ids == [entry.id]
+            assert restored.events.ids == [event.id]
+            assert restored.entries[entry.id] is restored.files.by_pos[0]
+            assert restored.events[event.id].entry is restored.entries[entry.id]
+            restored.remove(csv)
+            reloaded = Trail(root)
+            assert reloaded.id == trail.id
+            assert csv not in reloaded.entries
+            assert reloaded.events.ids == restored.events.ids
+
 
 if __name__ == "__main__":
     if sys.platform != "linux":
@@ -504,6 +570,14 @@ if __name__ == "__main__":
         (
             'test_discovered_entries_survive_reload',
             'discovered entries retain positions and identities after reload',
+        ),
+        (
+            'test_hex_ids_support_lookup_and_persistence',
+            'hexadecimal IDs support lookup and persistence',
+        ),
+        (
+            'test_legacy_integer_ids_are_normalized_on_reload',
+            'legacy integer IDs normalize to hexadecimal strings on reload',
         ),
     ]
 
