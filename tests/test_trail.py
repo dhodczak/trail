@@ -9,7 +9,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from trail import Trail
-from trail.entry import Entry
 from trail.event import AddEntryEvent, RemoveEntryEvent, WatchdogEvent
 
 
@@ -27,14 +26,13 @@ class TestTrail:
     def opened_event(
         trail: Trail,
         csv: Path,
-        previous: set[int],
+        previous: int,
     ) -> WatchdogEvent | None:
         return next(
             (
                 event
-                for event in trail.events.values()
-                if event.id not in previous
-                and isinstance(event, WatchdogEvent)
+                for event in trail.events.by_pos[previous:]
+                if isinstance(event, WatchdogEvent)
                 and event.event_type == "opened"
                 and event.src_path == str(csv)
             ),
@@ -47,12 +45,12 @@ class TestTrail:
                 csv = root / "dataset.csv"
                 trail = Trail()
                 entry = trail.add(csv)[0]
-                addition = next(iter(trail.events.values()))
+                addition = trail.events.by_pos[0]
                 assert isinstance(addition, AddEntryEvent)
                 assert addition.entry is entry
                 async with trail.watchdog.context():
                     assert trail.watchdog.observer.is_alive()
-                    previous = set(trail.events)
+                    previous = len(trail.events)
                     with csv.open(encoding="utf-8") as stream:
                         assert stream.read() == "name,value\nexample,42\n"
                     async with asyncio.timeout(5):
@@ -74,7 +72,7 @@ class TestTrail:
                 trail = Trail(root)
                 entry = trail.add(csv)[0]
                 async with trail.watchdog.context():
-                    previous = set(trail.events)
+                    previous = len(trail.events)
                     with csv.open(encoding="utf-8") as stream:
                         assert stream.read() == "name,value\nexample,42\n"
                     async with asyncio.timeout(5):
@@ -83,7 +81,10 @@ class TestTrail:
                         ) is None:
                             await asyncio.sleep(0.01)
                 assert opened.entry is entry
-                records = [event.to_record() for event in trail.events.values()]
+                records = [
+                    event.to_record()
+                    for event in trail.events.by_pos[:]
+                ]
                 stored = [
                     json.loads(line)
                     for line in trail.events.jsonl.path.read_text(
@@ -97,7 +98,7 @@ class TestTrail:
                     "import json, sys; from trail import Trail; "
                     "trail = Trail(sys.argv[1]); "
                     'print(json.dumps({"id": trail.id, '
-                    '"events": [event.to_record() for event in trail.events.values()], '
+                    '"events": [event.to_record() for event in trail.events.by_pos[:]], '
                     '"entry_id": trail.entries[sys.argv[2]].id}))',
                     str(root),
                     str(csv),
@@ -116,15 +117,17 @@ class TestTrail:
                 restored = Trail(root)
                 assert restored.id == trail.id
                 assert [
-                    event.to_record() for event in restored.events.values()
+                    event.to_record()
+                    for event in restored.events.by_pos[:]
                 ] == records
                 restored_entry = restored.entries[csv]
                 assert restored_entry.id == entry.id
                 assert all(
-                    event.entry is restored_entry for event in restored.events.values()
+                    event.entry is restored_entry
+                    for event in restored.events.by_pos[:]
                 )
                 async with restored.watchdog.context():
-                    previous = set(restored.events)
+                    previous = len(restored.events)
                     with csv.open(encoding="utf-8") as stream:
                         assert stream.read() == "name,value\nexample,42\n"
                     async with asyncio.timeout(5):
@@ -133,7 +136,10 @@ class TestTrail:
                         ) is None:
                             await asyncio.sleep(0.01)
                 assert reopened.entry is restored_entry
-                previous_ids = {record["id"] for record in records}
+                previous_ids = {
+                    record["id"]
+                    for record in records
+                }
                 assert reopened.id not in previous_ids
                 third = Trail(root)
                 assert reopened.id in third.events
@@ -141,50 +147,62 @@ class TestTrail:
         asyncio.run(run())
 
     def test_removed_file_stays_untracked_after_new_session(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                csv = root / 'dataset.csv'
+                other_csv = root / 'other.csv'
+                other_csv.write_text('name,value\nother,7\n', encoding='utf-8')
+                trail = Trail(root)
+                entry = trail.add(csv)[0]
+                other_entry = trail.add(other_csv)[0]
+                trail.remove(csv)
+                restored = Trail(root)
+                assert csv not in restored.entries
+                removal = restored.events.by_pos[-1]
+                assert isinstance(removal, RemoveEntryEvent)
+                assert removal.entry.id == entry.id
+                previous = len(restored.events)
+
+                async with restored.watchdog.context():
+                    with csv.open(encoding='utf-8') as stream:
+                        assert stream.read() == 'name,value\nexample,42\n'
+                    with other_csv.open(encoding='utf-8') as stream:
+                        assert stream.read() == 'name,value\nother,7\n'
+                    async with asyncio.timeout(5):
+                        while (
+                            opened := self.opened_event(restored, other_csv, previous)
+                        ) is None:
+                            await asyncio.sleep(0.01)
+
+                assert opened.entry.id == other_entry.id
+                assert csv not in restored.entries
+                assert restored.events.by_pos[previous:] == [opened]
+                assert csv not in Trail(root).entries
+
+        asyncio.run(run())
+
+    def test_add_remove_and_readd_history_can_be_restored(self) -> None:
         with self.workspace() as root:
-            csv = root / "dataset.csv"
+            csv = root / 'dataset.csv'
             trail = Trail(root)
-            entry = trail.add(csv)[0]
+            original_entry = trail.add(csv)[0]
             trail.remove(csv)
-            restored = Trail(root)
-            assert csv not in restored.entries
-            removal = list(restored.events.values())[-1]
-            assert isinstance(removal, RemoveEntryEvent)
-            assert removal.entry.id == entry.id
-            opened = WatchdogEvent(src_path=str(csv), event_type="opened")
-            assert opened.apply(restored) is None
-            assert opened.id not in restored.events
-            assert len(restored.events) == 2
-
-    def test_replay_dispatches_to_event_subclass(self) -> None:
-        replayed = []
-
-        class CustomAddEvent(AddEntryEvent):
-            def apply(
-                self,
-                trail: Trail,
-                *,
-                replay: bool = False,
-            ) -> Entry:
-                entry = AddEntryEvent.apply(self, trail, replay=replay)
-                if replay:
-                    replayed.append(self.id)
-                return entry
-
-        with self.workspace() as root:
-            csv = root / "dataset.csv"
-            trail = Trail(root)
-            event = CustomAddEvent(src_path=str(csv))
-            entry = event.apply(trail)
-            trail.events[event.id] = event
+            current_entry = trail.add(csv)[0]
+            assert current_entry.id != original_entry.id
             history = trail.events.jsonl.path.read_bytes()
             csv.unlink()
 
             restored = Trail(root)
-
-            assert replayed == [event.id]
-            assert restored.entries[csv].id == entry.id
-            assert isinstance(restored.events[event.id], CustomAddEvent)
+            addition = restored.events.by_pos[0]
+            removal = restored.events.by_pos[1]
+            readdition = restored.events.by_pos[2]
+            assert isinstance(addition, AddEntryEvent)
+            assert isinstance(removal, RemoveEntryEvent)
+            assert isinstance(readdition, AddEntryEvent)
+            assert addition.entry is removal.entry
+            assert addition.entry.id == original_entry.id
+            assert readdition.entry is restored.entries[csv]
+            assert readdition.entry.id == current_entry.id
             assert restored.events.jsonl.path.read_bytes() == history
 
     def test_deleted_csv_history_can_be_restored(self) -> None:
@@ -194,19 +212,129 @@ class TestTrail:
                 trail = Trail(root)
                 entry = trail.add(csv)[0]
                 async with trail.watchdog.context():
-                    previous = set(trail.events)
+                    previous = len(trail.events)
                     with csv.open(encoding="utf-8") as stream:
                         assert stream.read() == "name,value\nexample,42\n"
                     async with asyncio.timeout(5):
                         while self.opened_event(trail, csv, previous) is None:
                             await asyncio.sleep(0.01)
-                records = [event.to_record() for event in trail.events.values()]
+                records = [
+                    event.to_record()
+                    for event in trail.events.by_pos[:]
+                ]
                 csv.unlink()
                 restored = Trail(root)
                 assert restored.entries[csv].id == entry.id
                 assert [
-                    event.to_record() for event in restored.events.values()
+                    event.to_record()
+                    for event in restored.events.by_pos[:]
                 ] == records
+
+        asyncio.run(run())
+
+    def test_by_pos_slicing_after_tracking_changes(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            other_csv = root / 'other.csv'
+            other_csv.write_text('name,value\nother,7\n', encoding='utf-8')
+            trail = Trail()
+            positions = trail.events.by_pos
+            assert positions[:] == []
+            trail.add(csv)
+            first = positions[-1]
+            trail.add(other_csv)
+            second = positions[-1]
+            trail.remove(csv)
+            third = positions[-1]
+            trail.add(csv)
+            fourth = positions[-1]
+
+            assert positions[0] is first
+            assert positions[-1] is fourth
+            assert positions[:] == [first, second, third, fourth]
+            assert positions[1:3] == [second, third]
+            assert positions[:-1] == [first, second, third]
+            assert positions[::2] == [first, third]
+            assert positions[::-1] == [fourth, third, second, first]
+            assert positions[10:] == []
+            assert len(positions) == len(trail.events)
+            assert trail.events.ids == [first.id, second.id, third.id, fourth.id]
+            assert trail.events[first.id] is positions[0]
+            assert isinstance(third, RemoveEntryEvent)
+
+            trail.add(csv)
+            assert positions[:] == [first, second, third, fourth]
+            trail.remove(other_csv)
+            assert len(positions) == 5
+            assert isinstance(positions[-1], RemoveEntryEvent)
+            assert positions[-1].entry is second.entry
+            assert trail.events.ids[-1] == positions[-1].id
+
+            try:
+                positions[10]
+            except IndexError:
+                pass
+            else:
+                raise AssertionError('out-of-range positions must raise IndexError')
+
+            try:
+                positions[::0]
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('zero slice steps must raise ValueError')
+
+    def test_by_pos_survives_file_changes_and_reload(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                csv = root / 'dataset.csv'
+                trail = Trail(root)
+                entry = trail.add(csv)[0]
+                async with trail.watchdog.context():
+                    previous = len(trail.events)
+                    with csv.open(encoding='utf-8') as stream:
+                        assert stream.read() == 'name,value\nexample,42\n'
+                    async with asyncio.timeout(5):
+                        while self.opened_event(trail, csv, previous) is None:
+                            await asyncio.sleep(0.01)
+                    previous = len(trail.events)
+                    csv.write_text('name,value\nexample,43\n', encoding='utf-8')
+                    async with asyncio.timeout(5):
+                        while not any(
+                            event.event_type == 'modified'
+                            and event.src_path == str(csv)
+                            for event in trail.events.by_pos[previous:]
+                        ):
+                            await asyncio.sleep(0.01)
+                    previous = len(trail.events)
+                    csv.unlink()
+                    async with asyncio.timeout(5):
+                        while not any(
+                            event.event_type == 'deleted'
+                            and event.src_path == str(csv)
+                            for event in trail.events.by_pos[previous:]
+                        ):
+                            await asyncio.sleep(0.01)
+
+                assert trail.events.by_pos[-1].event_type == 'deleted'
+                assert all(
+                    event.entry is entry
+                    for event in trail.events.by_pos[:]
+                )
+                history = trail.events.jsonl.path.read_bytes()
+                expected_ids = trail.events.ids.copy()
+                restored = Trail(root)
+                assert restored.events.ids == expected_ids
+                assert restored.events.by_pos[0].id == expected_ids[0]
+                assert restored.events.by_pos[-1].id == expected_ids[-1]
+                assert [
+                    event.id
+                    for event in restored.events.by_pos[::-1]
+                ] == expected_ids[::-1]
+                assert restored.entries[csv].id == entry.id
+                restored.events.jsonl.read()
+                assert restored.events.ids == expected_ids
+                assert restored.events.jsonl.path.read_bytes() == history
 
         asyncio.run(run())
 
@@ -231,8 +359,16 @@ if __name__ == "__main__":
             "deleted CSV history is restored",
         ),
         (
-            "test_replay_dispatches_to_event_subclass",
-            "event subclasses control their own replay",
+            "test_add_remove_and_readd_history_can_be_restored",
+            "tracking changes replay with stable entry identities",
+        ),
+        (
+            'test_by_pos_slicing_after_tracking_changes',
+            'positional slicing follows real tracking changes',
+        ),
+        (
+            'test_by_pos_survives_file_changes_and_reload',
+            'positional indexing survives real file changes and reload',
         ),
     ]
 

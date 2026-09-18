@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from collections import UserDict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Self, overload
 from uuid import uuid4
 
 from .entry import Entry
@@ -274,6 +274,7 @@ class JSONL(Node):
                 event.apply(trail, replay=True)
         self._parent.data.clear()
         self._parent.data.update(loaded)
+        self._parent.ids[:] = loaded
 
     def write(self) -> None:
         path = self.path
@@ -304,6 +305,29 @@ class JSONL(Node):
             file.write(text.encode("utf-8"))
 
 
+class ByPos(Node):
+    _parent: Events
+
+    @overload
+    def __getitem__(self, item: int) -> Event: ...
+
+    @overload
+    def __getitem__(self, item: slice) -> list[Event]: ...
+
+    def __getitem__(self, item: int | slice) -> Event | list[Event]:
+        events = self._parent
+        if isinstance(item, slice):
+            return [
+                events[identifier]
+                for identifier in events.ids[item]
+            ]
+        identifier = events.ids[item]
+        return events[identifier]
+
+    def __len__(self) -> int:
+        return len(self._parent.ids)
+
+
 class Events(
     UserDict[int, Event],
     Node,
@@ -315,15 +339,40 @@ class Events(
     def __init__(self, parent: Trail) -> None:
         UserDict.__init__(self)
         Node.__init__(self, parent)
+        self.ids: list[int] = []
 
     @cached_property
     def jsonl(self) -> JSONL:
         return JSONL(self)
 
-    def update(self, m, /) -> None:
+    @cached_property
+    def by_pos(self) -> ByPos:
+        """Allows for Events to be indexed by integer position, rather than ID or path."""
+        return ByPos(self)
+
+    def update(
+            self,
+            m: Mapping[int, Event] | Iterable[tuple[int, Event]],
+            /,
+    ) -> None:
         batch = dict(m)
-        self.jsonl.append(batch.values())
+        for value in batch.values():
+            if not isinstance(value, Event):
+                raise TypeError(f"Expected Event, got {type(value).__name__}")
+        replacing = any(
+            key in self.data
+            for key in batch
+        )
+        if not replacing:
+            self.jsonl.append(batch.values())
+        self.ids.extend(
+            key
+            for key in batch
+            if key not in self.data
+        )
         self.data.update(batch)
+        if replacing:
+            self.jsonl.write()
 
     def __setitem__(
         self,
@@ -332,9 +381,20 @@ class Events(
     ) -> None:
         if not isinstance(value, Event):
             raise TypeError(f"Expected Event, got {type(value).__name__}")
-        self.jsonl.append([value])
-        self.data[key] = value
+        if key in self.data:
+            self.data[key] = value
+            self.jsonl.write()
+        else:
+            self.jsonl.append([value])
+            self.data[key] = value
+            self.ids.append(key)
 
-    def clear(self):
-        super().clear()
+    def __delitem__(self, key: int) -> None:
+        del self.data[key]
+        self.ids.remove(key)
+        self.jsonl.write()
+
+    def clear(self) -> None:
+        self.data.clear()
+        self.ids.clear()
         self.jsonl.write()
