@@ -11,6 +11,9 @@ project:
 
   toc:
     - file: "index.md"
+    - title: "Tutorials"
+      children:
+        - pattern: "tutorials/*.ipynb"
     - title: "Explanation"
       children:
         - pattern: "explanation/*.md"

@@ -92,6 +92,20 @@ class Dir(Entry):
         collection.id2entry[self.id] = self
         return self
 
+    def move(self, destination: str | Path) -> Self:
+        previous_path = self.path
+        super().move(destination)
+        trail = self._trail
+        descendants = (
+            entry
+            for collection in (trail.files, trail.dirs)
+            for entry in tuple(collection.id2entry.values())
+            if entry is not self and entry.path.is_relative_to(previous_path)
+        )
+        for entry in descendants:
+            entry.move(self.path / entry.path.relative_to(previous_path))
+        return self
+
     def walk(self) -> Iterator[Entry]:
         trail = self._trail
         pending: list[Entry] = [self]

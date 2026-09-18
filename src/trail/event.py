@@ -182,9 +182,7 @@ class WatchdogEvent(Event):
             if entry is None:
                 raise ValueError("Cannot replay a watchdog event without an entry")
             if self.event_type == "moved" and self.dest_path:
-                entry.remove()
-                entry.path = Path(self.dest_path).expanduser().resolve()
-                entry.add()
+                entry.move(self.dest_path)
             elif self.event_type == "created":
                 entry.add()
             return entry

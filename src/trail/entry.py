@@ -122,6 +122,52 @@ class Entry(Node):
     def add(self) -> Self:
         raise NotImplementedError
 
+    def move(self, destination: str | Path) -> Self:
+        """
+        Repoint a tracked entry at `destination`, keeping its ID and its position in the
+        collection, so that renaming a resource outside the process does not fork its identity.
+        """
+        collection = self._parent
+        destination = Path(destination).expanduser().resolve()
+        if destination == self.path:
+            return self
+        trail = self._trail
+        if trail._ignored(destination):
+            raise ValueError(f"Cannot track Trail metadata: {destination}")
+        watchdog = self._watchdog
+        previous_path = self.path
+        previous_watches = self._watch_paths
+        self.path = destination
+        retained = []
+        try:
+            for watched_path in self._watch_paths:
+                watchdog.watch(watched_path)
+                ids = watchdog.dir2ids.setdefault(watched_path, set())
+                if self.id not in ids:
+                    ids.add(self.id)
+                    retained.append(watched_path)
+        except Exception:
+            for watched_path in reversed(retained):
+                watchdog.release(watched_path, self.id)
+            self.path = previous_path
+            raise
+        for watched_path in previous_watches:
+            if watched_path not in self._watch_paths:
+                watchdog.release(watched_path, self.id)
+        if collection.path2entry.get(previous_path) is self:
+            del collection.path2entry[previous_path]
+        occupant = collection.path2entry.get(destination)
+        if (
+            occupant is not None
+            and occupant is not self
+        ):
+            occupant.remove()
+        collection.path2entry[destination] = self
+        if self.id not in collection.id2entry:
+            collection.ids.append(self.id)
+            collection.id2entry[self.id] = self
+        return self
+
     def remove(self) -> None:
         """Remove the entry from the tracked Entries collection."""
         collection = self._parent

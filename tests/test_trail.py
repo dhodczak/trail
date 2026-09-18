@@ -692,6 +692,81 @@ class TestTrail:
         asyncio.run(run())
 
 
+    def test_renamed_file_keeps_its_resource_id(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                csv = root / 'dataset.csv'
+                trail = Trail(root)
+                entry = trail.add(csv)
+                identifier = entry.id
+                renamed = root / 'renamed.csv'
+                previous = len(trail.events)
+                csv.rename(renamed)
+                async with asyncio.timeout(5):
+                    while not any(
+                        event.event_type == 'moved'
+                        and event.dest_path == str(renamed)
+                        for event in trail.events.by_pos[previous:]
+                    ):
+                        await asyncio.sleep(0.01)
+                await trail.watchdog.stop()
+
+                assert trail.files[renamed] is entry
+                assert entry.id == identifier
+                assert entry.path == renamed
+                assert csv not in trail.files
+                assert trail.files.ids == [identifier]
+
+                restored = Trail(root)
+                assert restored.files.ids == [identifier]
+                assert restored.files[renamed].id == identifier
+                assert csv not in restored.files
+                await restored.watchdog.stop()
+
+        asyncio.run(run())
+
+    def test_renamed_folder_repaths_its_contents(self) -> None:
+        async def run() -> None:
+            with self.workspace() as root:
+                trail = Trail(root)
+                folder = root / 'folder'
+                folder.mkdir()
+                folder_entry = trail.add(folder)
+                nested = folder / 'nested'
+                nested.mkdir()
+                async with asyncio.timeout(5):
+                    while nested not in trail.dirs:
+                        await asyncio.sleep(0.01)
+                nested_entry = trail.dirs[nested]
+                inner = nested / 'inner.csv'
+                inner.write_text('name,value\ninner,1\n', encoding='utf-8')
+                async with asyncio.timeout(5):
+                    while inner not in trail.files:
+                        await asyncio.sleep(0.01)
+                inner_entry = trail.files[inner]
+
+                renamed = root / 'renamed'
+                folder.rename(renamed)
+                async with asyncio.timeout(5):
+                    while renamed not in trail.dirs:
+                        await asyncio.sleep(0.01)
+                await trail.watchdog.stop()
+
+                assert trail.dirs[renamed] is folder_entry
+                assert trail.dirs[renamed / 'nested'] is nested_entry
+                assert trail.files[renamed / 'nested' / 'inner.csv'] is inner_entry
+                assert folder not in trail.dirs
+                assert inner not in trail.files
+
+                restored = Trail(root)
+                assert restored.dirs.ids == trail.dirs.ids
+                assert restored.files.ids == trail.files.ids
+                assert restored.files[renamed / 'nested' / 'inner.csv'].id == inner_entry.id
+                await restored.watchdog.stop()
+
+        asyncio.run(run())
+
+
 if __name__ == "__main__":
     if sys.platform != "linux":
         raise SystemExit("file opening requires Linux inotify")
@@ -762,6 +837,14 @@ if __name__ == "__main__":
         (
             'test_folder_auto_tracks_created_files_and_nested_subdirectories',
             'folders auto-track created files and nested subdirectories',
+        ),
+        (
+            'test_renamed_file_keeps_its_resource_id',
+            'renamed files keep their resource ID across a reload',
+        ),
+        (
+            'test_renamed_folder_repaths_its_contents',
+            'renamed folders repath their tracked contents',
         ),
     ]
 

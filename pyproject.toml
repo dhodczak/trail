@@ -3,7 +3,10 @@ name = "trail"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
-dependencies = ["watchdog>=6.0"]
+dependencies = [
+    "ipykernel>=7.3.0",
+    "watchdog>=6.0",
+]
 authors = [
     { name = "Maryam Hosseini", email = "maryamh@berkeley.edu" },
     { name = "Matt Fisher", email="mfisher87@gmail.com"}
