@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
 from trail.node import Node
-from trail.util import ByPos, normalize_id
+from trail.util import ByPos, items_repr, normalize_id
 
 if TYPE_CHECKING:
     from trail.event import Event
@@ -210,15 +210,13 @@ class Entries[E: Entry](Node):
         return ByPos(self)
 
     def __repr__(self) -> str:
-        lines = [f'{type(self).__name__} ({len(self)})']
-        for position, identifier in enumerate(self.ids):
-            entry = self[identifier]
-            lines.append(f'    {position}. {type(entry).__name__}')
-            lines.extend(
-                f'        {name}: {value!r}'
-                for name, value in entry._repr_items()
-            )
-        return '\n'.join(lines)
+        return items_repr(
+            type(self).__name__,
+            (
+                self[identifier]
+                for identifier in self.ids
+            ),
+        )
 
     @cached_property
     def path2entry(self) -> dict[Path, E]:

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from trail.entry import Entry
 from trail.node import Node
-from trail.util import ByPos, file_repr, normalize_id
+from trail.util import ByPos, file_repr, items_repr, normalize_id
 
 if TYPE_CHECKING:
     from trail.trail import Trail
@@ -430,9 +430,4 @@ class Events(
         self.jsonl.write()
 
     def __repr__(self) -> str:
-        lines = [f'{type(self).__name__} ({len(self)})']
-        for position, event in enumerate(self.data.values()):
-            lines.append(f'    {position}. {type(event).__name__}')
-            for name, value in event._repr_items():
-                lines.append(f'        {name}: {value!r}')
-        return '\n'.join(lines)
+        return items_repr(type(self).__name__, self.data.values())

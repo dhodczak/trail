@@ -12,7 +12,7 @@ from trail.entry import Entry, EntryKey
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
 from trail.file import Files
 from trail.node import Node
-from trail.util import ByPos, file_repr, list_repr, normalize_id
+from trail.util import ByPos, file_repr, items_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
 
 
@@ -71,6 +71,7 @@ class EntryLookup(
     """
 
     _parent: Trail
+    _repr_name = 'Entries'
 
     @property
     def ids(self) -> list[str]:
@@ -81,15 +82,13 @@ class EntryLookup(
         return ByPos(self)
 
     def __repr__(self) -> str:
-        lines = [f'Entries ({len(self)})']
-        for position, identifier in enumerate(self.ids):
-            entry = self[identifier]
-            lines.append(f'    {position}. {type(entry).__name__}')
-            lines.extend(
-                f'        {name}: {value!r}'
-                for name, value in entry._repr_items()
-            )
-        return '\n'.join(lines)
+        return items_repr(
+            self._repr_name,
+            (
+                self[identifier]
+                for identifier in self.ids
+            ),
+        )
 
     @overload
     def __getitem__(self, key: EntryKey) -> Entry: ...
@@ -138,6 +137,19 @@ class EntryLookup(
 
 
 class Trail(Node):
+    """
+
+    >>> trail
+    Trail
+    id: '6617127da84b49e481b612c0418244c5'
+    dir: '/tmp/tmpfnmpus7h/.trail'
+    entries: [
+        '/tmp/tmpfnmpus7h/folder/new.csv',
+        '/tmp/tmpfnmpus7h/folder/nested/nested.csv',
+        '/tmp/tmpfnmpus7h/folder',
+        '/tmp/tmpfnmpus7h/folder/nested',
+    ]
+    """
     # paths listed by __repr__ before the remainder is summarized
     repr_limit = 10
 

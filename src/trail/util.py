@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections import UserList
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Protocol, overload
 from uuid import UUID
@@ -84,6 +85,58 @@ def file_repr(
     return '\n'.join(lines)
 
 
+class Repr(Protocol):
+    def _repr_items(self) -> Iterator[tuple[str, object]]: ...
+
+
+def items_repr(
+        name: str,
+        items: Iterable[Repr],
+) -> str:
+    """Multi-line repr for a collection, expanding each item's fields onto its own line."""
+    items = list(items)
+    lines = [f'{name} ({len(items)})']
+    for position, item in enumerate(items):
+        lines.append(f'    {position}. {type(item).__name__}')
+        lines.extend(
+            f'        {key}: {value!r}'
+            for key, value in item._repr_items()
+        )
+    return '\n'.join(lines)
+
+
+class Listing[T: Repr](UserList[T]):
+    """
+    The list yielded by slicing a `ByPos`; reprs like the collection it was sliced from,
+    rather than as a single dense line per item.
+    """
+
+    def __init__(
+            self,
+            initlist: Iterable[T] | None = None,
+            /,
+            name: str | None = None,
+    ) -> None:
+        UserList.__init__(self, initlist)
+        if name is None:
+            name = type(self).__name__
+        self.name = name
+
+    @overload
+    def __getitem__(self, item: int) -> T: ...
+
+    @overload
+    def __getitem__(self, item: slice) -> Listing[T]: ...
+
+    def __getitem__(self, item: int | slice) -> T | Listing[T]:
+        if isinstance(item, slice):
+            return type(self)(self.data[item], name=self.name)
+        return self.data[item]
+
+    def __repr__(self) -> str:
+        return items_repr(self.name, self.data)
+
+
 class Positioned[T](Protocol):
     @property
     def ids(self) -> list[str]: ...
@@ -102,15 +155,17 @@ class ByPos[T](Node):
     def __getitem__(self, item: int) -> T: ...
 
     @overload
-    def __getitem__(self, item: slice) -> list[T]: ...
+    def __getitem__(self, item: slice) -> Listing[T]: ...
 
-    def __getitem__(self, item: int | slice) -> T | list[T]:
+    def __getitem__(self, item: int | slice) -> T | Listing[T]:
         collection = self._parent
         if isinstance(item, slice):
-            return [
+            selected = [
                 collection[identifier]
                 for identifier in collection.ids[item]
             ]
+            name = getattr(collection, '_repr_name', type(collection).__name__)
+            return Listing(selected, name=name)
         identifier = collection.ids[item]
         return collection[identifier]
 
