@@ -57,7 +57,7 @@ class JSON(Node):
         """Determines the trail metadata file path based on the trail directory."""
         trail = self._trail
         if trail.dir:
-            return trail.dir / "path.json"
+            return trail.dir / "project.json"
         else:
             return None
 

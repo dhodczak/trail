@@ -47,7 +47,7 @@ class Event:
                     f'{date_prefix}{value:%H:%M:%S}.'
                     f'{value.microsecond // 1000:03d}'
                 )
-            if value == '':
+            if value is None or value == '':
                 continue
             yield event_field.name, value
 
@@ -115,7 +115,14 @@ class Event:
 
 @dataclass(kw_only=True, slots=True, repr=False)
 class AddEntryEvent(Event):
+    """
+    Registration of a resource. The recorded size and mtime are the baseline the filesystem is
+    later compared against, so they are sampled once at registration and never refreshed on replay.
+    """
+
     src_path: str
+    size: int | None = field(default=None, init=False)
+    mtime: float | None = field(default=None, init=False)
     is_directory: bool = field(default=False, init=False, repr=False)
     entry: Entry | None = field(default=None, init=False, repr=False)
 
@@ -135,8 +142,20 @@ class AddEntryEvent(Event):
 
         entry.add()
         self.is_directory = entry.path in trail.dirs
+        if not replay:
+            self._stat(entry)
         trail._removed_paths.discard(entry.path)
         return entry
+
+    def _stat(self, entry: Entry) -> None:
+        # a resource may vanish between resolution and registration; an unrecorded
+        # baseline is preferable to refusing the registration outright
+        try:
+            metadata = entry.path.stat()
+        except OSError:
+            return
+        self.size = metadata.st_size
+        self.mtime = metadata.st_mtime
 
 
 @dataclass(kw_only=True, slots=True, repr=False)
