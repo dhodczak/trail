@@ -24,5 +24,20 @@ include = [
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.6.2",
     "ruff>=0.16.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# `ruff format` is deliberately absent from the pre-commit hooks. It is Black-derived and
+# collapses any comprehension or multi-line expression that fits within line-length onto a
+# single line, which this codebase expands on purpose. Ruff exposes no option to preserve
+# intentional line breaks, so the formatter is not run at all; `ruff check` is.
+[tool.ruff.lint]
+extend-select = [
+    "I",
+    "UP",
 ]
