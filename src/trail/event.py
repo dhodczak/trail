@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import UserDict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
@@ -358,6 +359,90 @@ class JSONL(Node):
             file.write(text.encode("utf-8"))
 
 
+class Watch(Node):
+    """
+    Suspends a consumer until the Trail records something, rather than leaving it to poll the
+    collection. Each iteration holds its own waiter and its own cursor into the log, so several
+    consumers may watch at once without consuming one another's events.
+    """
+
+    _parent: Events
+
+    @cached_property
+    def waiters(self) -> set[asyncio.Event]:
+        """The flag held by each live iteration, raised when the log is appended to."""
+        return set()
+
+    def notify(self) -> None:
+        """Wake every iteration so it may drain whatever was just appended."""
+        for waiter in self.waiters:
+            waiter.set()
+
+    def __call__(
+            self,
+            timeout: float | None = None,
+    ) -> AsyncIterator[Event]:
+        """
+        Yield each event appended after this call, suspending until the next one arrives rather
+        than polling the collection. The cursor is taken here rather than when iteration begins,
+        so a watcher made before the action which triggers the event cannot miss it, however long
+        the loop takes to reach the `async for`. Iteration ends once `timeout` seconds have
+        elapsed, so a `for ... else` distinguishes the awaited event from the deadline.
+
+            watching = trail.events.watch(timeout=5)
+            asset.open()
+            async for event in watching:
+                if isinstance(event, WatchdogEvent):
+                    break
+            else:
+                raise TimeoutError
+        """
+        return self._iterate(len(self._parent.ids), timeout)
+
+    async def _iterate(
+            self,
+            position: int,
+            timeout: float | None,
+    ) -> AsyncIterator[Event]:
+        events = self._parent
+        loop = asyncio.get_running_loop()
+        if timeout is None:
+            deadline = None
+        else:
+            deadline = loop.time() + timeout
+        waiter = asyncio.Event()
+        self.waiters.add(waiter)
+        try:
+            while True:
+                # cleared before the backlog is drained, so an arrival during a yield is not lost
+                waiter.clear()
+                # events removed while watching would leave the position beyond the collection
+                position = min(position, len(events.ids))
+                while position < len(events.ids):
+                    event = events.data[events.ids[position]]
+                    position += 1
+                    yield event
+                if deadline is None:
+                    remaining = None
+                else:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        return
+                try:
+                    await asyncio.wait_for(waiter.wait(), remaining)
+                except TimeoutError:
+                    return
+        finally:
+            self.waiters.discard(waiter)
+
+    def __repr__(self) -> str:
+        lines = [
+            type(self).__name__,
+            f'    waiters: {len(self.waiters)!r}',
+        ]
+        return '\n'.join(lines)
+
+
 class Events(
     UserDict[str, Event],
     Node,
@@ -395,6 +480,11 @@ class Events(
         return JSONL(self)
 
     @cached_property
+    def watch(self) -> Watch:
+        """Awaits the events yet to be recorded, in place of polling the collection."""
+        return Watch(self)
+
+    @cached_property
     def by_pos(self) -> ByPos[Event]:
         """Allows for Events to be indexed by integer position, rather than ID or path."""
         return ByPos(self)
@@ -414,14 +504,17 @@ class Events(
         )
         if not replacing:
             self.jsonl.append(batch.values())
-        self.ids.extend(
+        appended = [
             key
             for key in batch
             if key not in self.data
-        )
+        ]
+        self.ids.extend(appended)
         self.data.update(batch)
         if replacing:
             self.jsonl.write()
+        if appended:
+            self.watch.notify()
 
     def __setitem__(
         self,
@@ -437,6 +530,7 @@ class Events(
             self.jsonl.append([value])
             self.data[key] = value
             self.ids.append(key)
+            self.watch.notify()
 
     def __delitem__(self, key: str) -> None:
         del self.data[key]
