@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from trail.entry import Entry
 from trail.node import Node
-from trail.util import ByPos, file_repr, items_repr, normalize_id
+from trail.util import ByPos, asset_repr, items_repr, normalize_id
 
 if TYPE_CHECKING:
     from trail.trail import Trail
@@ -226,7 +226,7 @@ class WatchdogEvent(Event):
         if self.is_directory:
             collection = trail.dirs
         else:
-            collection = trail.files
+            collection = trail.assets
         entry = collection.get(source)
         if entry is None and destination is not None:
             entry = collection.get(destination)
@@ -281,7 +281,7 @@ class JSONL(Node):
     _parent: Events
 
     def __repr__(self) -> str:
-        return file_repr(type(self).__name__, self.path)
+        return asset_repr(type(self).__name__, self.path)
 
     @property
     def path(self) -> Path | None:
@@ -292,8 +292,8 @@ class JSONL(Node):
             return None
 
     def read(self) -> None:
+        from trail.asset import Asset
         from trail.dir import Dir
-        from trail.file import File
 
         path = self.path
         trail = self._trail
@@ -316,8 +316,8 @@ class JSONL(Node):
                             entry = Dir(path=entry_path, id=entry_id)
                             entry._parent = trail.dirs
                         else:
-                            entry = File(path=entry_path, id=entry_id)
-                            entry._parent = trail.files
+                            entry = Asset(path=entry_path, id=entry_id)
+                            entry._parent = trail.assets
                     entries[entry_id] = entry
                 event = Event.from_record(trail=trail, resolved_entry=entry, **record)
                 if event.id in loaded:

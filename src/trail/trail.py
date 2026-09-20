@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import overload
 from uuid import uuid4
 
+from trail.asset import Assets
 from trail.dir import Dirs
 from trail.entry import Entry, EntryKey
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
-from trail.file import Files
 from trail.node import Node
-from trail.util import ByPos, file_repr, items_repr, list_repr, normalize_id
+from trail.util import ByPos, asset_repr, items_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
 
 
@@ -20,7 +20,7 @@ class JSON(Node):
     _parent: Trail
 
     def __repr__(self) -> str:
-        return file_repr(type(self).__name__, self.path)
+        return asset_repr(type(self).__name__, self.path)
 
     @property
     def record(self) -> dict:
@@ -48,7 +48,7 @@ class JSON(Node):
             data = json.load(f)
         trail = self._parent
         for key, value in data.items():
-            if key == 'id':
+            if key == "id":
                 value = normalize_id(value)
             self._setnested(trail, key, value)
 
@@ -67,15 +67,15 @@ class EntryLookup(
     Node,
 ):
     """
-    Lookup class for filesystme entries in a Trail; wraps `Trail.files` and `Trail.dirs` into a single mapping.
+    Lookup class for filesystme entries in a Trail; wraps `Trail.assets` and `Trail.dirs` into a single mapping.
     """
 
     _parent: Trail
-    _repr_name = 'Entries'
+    _repr_name = "Entries"
 
     @property
     def ids(self) -> list[str]:
-        return self._parent.files.ids + self._parent.dirs.ids
+        return self._parent.assets.ids + self._parent.dirs.ids
 
     @cached_property
     def by_pos(self) -> ByPos[Entry]:
@@ -84,10 +84,7 @@ class EntryLookup(
     def __repr__(self) -> str:
         return items_repr(
             self._repr_name,
-            (
-                self[identifier]
-                for identifier in self.ids
-            ),
+            (self[identifier] for identifier in self.ids),
         )
 
     @overload
@@ -100,16 +97,16 @@ class EntryLookup(
         self,
         key: EntryKey | Iterable[EntryKey],
     ) -> Entry | tuple[Entry, ...]:
-        """Returns an Entry object (File, Dir) or a tuple of Entry objects based on the provided key(s)."""
+        """Returns an Entry object (Asset, Dir) or a tuple of Entry objects based on the provided key(s)."""
         if isinstance(key, str):
-            entry = self._parent.files.id2entry.get(key)
+            entry = self._parent.assets.id2entry.get(key)
             if entry is None:
                 entry = self._parent.dirs.id2entry.get(key)
             if entry is not None:
                 return entry
         if isinstance(key, (str, Path)):
             try:
-                return self._parent.files[key]
+                return self._parent.assets[key]
             except KeyError:
                 return self._parent.dirs[key]
         selected = []
@@ -120,18 +117,18 @@ class EntryLookup(
         return tuple(selected)
 
     def __iter__(self) -> Iterator[str]:
-        """Iterates across all Entry IDs in the Trail, including both files and directories."""
-        yield from self._parent.files
+        """Iterates across all Entry IDs in the Trail, including both assets and directories."""
+        yield from self._parent.assets
         yield from self._parent.dirs
 
     def items(self):
         """Returns an iterator over (Entry ID, Entry) pairs for all entries in the Trail."""
-        yield from self._parent.files.items()
+        yield from self._parent.assets.items()
         yield from self._parent.dirs.items()
 
     def __len__(self) -> int:
-        """Returns the total number of entries in the Trail, including both files and directories."""
-        out = len(self._parent.files)
+        """Returns the total number of entries in the Trail, including both assets and directories."""
+        out = len(self._parent.assets)
         out += len(self._parent.dirs)
         return out
 
@@ -150,6 +147,7 @@ class Trail(Node):
         '/tmp/tmpfnmpus7h/folder/nested',
     ]
     """
+
     # paths listed by __repr__ before the remainder is summarized
     repr_limit = 10
 
@@ -171,20 +169,20 @@ class Trail(Node):
         return Watchdog(self)
 
     @cached_property
-    def files(self):
+    def assets(self):
         """
-        Returns a Files instance, which contains the mapping of IDs and paths to tracked File entries in the Trail.
+        Returns a Assets instance, which contains the mapping of IDs and paths to tracked Asset entries in the Trail.
 
-        >>> self.files
-        Files (2)
-            0. File
+        >>> self.assets
+        Assets (2)
+            0. Asset
                 id: '41d3f259a5fc4c1fa13c516cf892f56e'
                 path: '/tmp/tmpbzh09nb5/folder/new.csv'
-            1. File
+            1. Asset
                 id: '6e564e209ff44bafa32cf75d9ffcd844'
                 path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
         """
-        return Files(self)
+        return Assets(self)
 
     @cached_property
     def dirs(self):
@@ -205,14 +203,14 @@ class Trail(Node):
     @cached_property
     def entries(self) -> EntryLookup:
         """
-        Returns an EntryLookup, which provides a unified interface to access both File and Dir entries in the Trail.
+        Returns an EntryLookup, which provides a unified interface to access both Asset and Dir entries in the Trail.
 
         >>> self.entries
         Entries (4)
-            0. File
+            0. Asset
                 id: '41d3f259a5fc4c1fa13c516cf892f56e'
                 path: '/tmp/tmpbzh09nb5/folder/new.csv'
-            1. File
+            1. Asset
                 id: '6e564e209ff44bafa32cf75d9ffcd844'
                 path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
             2. Dir
@@ -337,19 +335,16 @@ class Trail(Node):
             directory = str(self.dir)
         lines = [
             type(self).__name__,
-            f'    id: {self.id!r}',
-            f'    dir: {directory!r}',
+            f"    id: {self.id!r}",
+            f"    dir: {directory!r}",
         ]
         entries = self.entries
         identifiers = entries.ids
         lines.extend(
             list_repr(
-                'entries',
-                (
-                    str(entries[identifier].path)
-                    for identifier in identifiers[:self.repr_limit]
-                ),
+                "entries",
+                (str(entries[identifier].path) for identifier in identifiers[: self.repr_limit]),
                 len(identifiers),
             )
         )
-        return '\n'.join(lines)
+        return "\n".join(lines)

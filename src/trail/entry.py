@@ -55,8 +55,8 @@ class Entry(Node):
         path: str | Path,
         trail: Trail | None = None,
     ) -> Self:
+        from trail.asset import Asset
         from trail.dir import Dir
-        from trail.file import File
 
         path = Path(path).expanduser().resolve()
         metadata = path.stat()
@@ -67,14 +67,14 @@ class Entry(Node):
         if issubclass(cls, Dir):
             if not S_ISDIR(metadata.st_mode):
                 raise ValueError(f"Not a directory: {path}")
-        elif issubclass(cls, File):
+        elif issubclass(cls, Asset):
             if not S_ISREG(metadata.st_mode):
                 raise ValueError(f"Not a regular file: {path}")
         else:
             if S_ISDIR(metadata.st_mode):
                 cls = Dir
             elif S_ISREG(metadata.st_mode):
-                cls = File
+                cls = Asset
             else:
                 raise ValueError(f"Not a regular file or directory: {path}")
 
@@ -84,7 +84,7 @@ class Entry(Node):
             if isinstance(out, Dir):
                 out._parent = trail.dirs
             else:
-                out._parent = trail.files
+                out._parent = trail.assets
         return out
 
     @property
@@ -181,14 +181,14 @@ class Entry(Node):
 
 class Entries[E: Entry](Node):
     """
-    A collection of Entry objects (File or Dir) tracked by a Trail.
+    A collection of Entry objects (Asset or Dir) tracked by a Trail.
 
     >>> trail.entries
     Entries (4)
-        0. File
+        0. Asset
             id: '41d3f259a5fc4c1fa13c516cf892f56e'
             path: '/tmp/tmpbzh09nb5/folder/new.csv'
-        1. File
+        1. Asset
             id: '6e564e209ff44bafa32cf75d9ffcd844'
             path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
         2. Dir
@@ -296,7 +296,7 @@ class Entries[E: Entry](Node):
                     entry.register()
                     continue
                 while (
-                    entry.id in self._trail.files
+                    entry.id in self._trail.assets
                     or entry.id in self._trail.dirs
                 ):
                     entry.id = uuid4().hex

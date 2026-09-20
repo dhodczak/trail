@@ -8,20 +8,20 @@ from uuid import uuid4
 from trail.entry import Entries, Entry
 
 
-class File(Entry):
+class Asset(Entry):
     """
     Represents a file entry tracked by a Trail.
 
-    >>> trail.files.by_pos[0]
-    File
+    >>> trail.assets.by_pos[0]
+    Asset
         id: '41d3f259a5fc4c1fa13c516cf892f56e'
         path: '/tmp/tmpbzh09nb5/folder/new.csv'
     """
-    _parent: Files
+    _parent: Assets
 
     @cached_property
-    def _parent(self) -> Files:
-        return self._trail.files
+    def _parent(self) -> Assets:
+        return self._trail.assets
 
     @property
     def _watch_paths(self) -> tuple[Path, ...]:
@@ -33,7 +33,7 @@ class File(Entry):
     #     selected = (
     #         change
     #         for change in changes
-    #         if change.file_id == self.id
+    #         if change.asset_id == self.id
     #     )
     #     return Events(changes, selected)
 
@@ -44,7 +44,7 @@ class File(Entry):
         trail = collection._trail
         if self._trail is not trail:
             raise ValueError("Entry already belongs to another Trail")
-        if collection is not trail.files:
+        if collection is not trail.assets:
             raise ValueError("Entry belongs to the wrong collection")
         path = Path(self.path).expanduser().resolve()
         if trail._ignored(path):
@@ -98,17 +98,17 @@ class File(Entry):
         super().unregister()
 
 
-class Files(Entries[File]):
+class Assets(Entries[Asset]):
     """
-    A collection of File entries tracked by a Trail.
+    A collection of Asset entries tracked by a Trail.
 
-    >>> trail.files
-    Files (2)
-        0. File
+    >>> trail.assets
+    Assets (2)
+        0. Asset
             id: '41d3f259a5fc4c1fa13c516cf892f56e'
             path: '/tmp/tmpbzh09nb5/folder/new.csv'
-        1. File
+        1. Asset
             id: '6e564e209ff44bafa32cf75d9ffcd844'
             path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
     """
-    entry_type = File
+    entry_type = Asset

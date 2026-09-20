@@ -4,8 +4,8 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from trail.asset import Asset, Assets
     from trail.event import Event, Events
-    from trail.file import File, Files
     from trail.trail import Trail
     from trail.watchdog import Handler, Watchdog
 
@@ -43,25 +43,25 @@ class Node:
         return parent._trail
 
     @cached_property
-    def _files(self) -> Files:
-        from trail.file import Files
+    def _assets(self) -> Assets:
+        from trail.asset import Assets
         from trail.trail import Trail
 
         parent = self._parent
         if isinstance(parent, Trail):
-            return parent.files
-        if isinstance(parent, Files):
+            return parent.assets
+        if isinstance(parent, Assets):
             return parent
-        return parent._files
+        return parent._assets
 
     @cached_property
-    def _file(self) -> File:
-        from trail.file import File
+    def _asset(self) -> Asset:
+        from trail.asset import Asset
 
         parent = self._parent
-        if isinstance(parent, File):
+        if isinstance(parent, Asset):
             return parent
-        return parent._file
+        return parent._asset
 
     @cached_property
     def _events(self) -> Events:

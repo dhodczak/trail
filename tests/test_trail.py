@@ -500,7 +500,7 @@ class TestTrail:
             directory = root / 'subdirectory'
             directory.mkdir()
             trail = Trail()
-            files = trail.files.by_pos
+            files = trail.assets.by_pos
             directories = trail.dirs.by_pos
             entries = trail.entries.by_pos
             first = trail.register(csv)
@@ -511,26 +511,26 @@ class TestTrail:
             assert files[::-1] == [second, first]
             assert directories[:] == [tracked_directory]
             assert entries[:] == [first, second, tracked_directory]
-            assert trail.files.ids == [first.id, second.id]
+            assert trail.assets.ids == [first.id, second.id]
             assert trail.dirs.ids == [tracked_directory.id]
-            assert trail.files[first.id] is files[0]
-            assert trail.files[csv] is files[0]
+            assert trail.assets[first.id] is files[0]
+            assert trail.assets[csv] is files[0]
             assert trail.register(csv) is first
             assert files[:] == [first, second]
 
             trail.unregister(csv)
             assert files[:] == [second]
-            assert trail.files.ids == [second.id]
+            assert trail.assets.ids == [second.id]
             readded = trail.register(csv)
             assert readded.id != first.id
             assert files[:] == [second, readded]
-            assert trail.files.ids == [second.id, readded.id]
+            assert trail.assets.ids == [second.id, readded.id]
             assert entries[:] == [second, readded, tracked_directory]
             trail.unregister(other_csv, csv, directory)
             assert files[:] == []
             assert directories[:] == []
             assert entries[:] == []
-            assert trail.files.ids == []
+            assert trail.assets.ids == []
             assert trail.dirs.ids == []
 
     def test_discovered_entries_survive_reload(self) -> None:
@@ -544,35 +544,35 @@ class TestTrail:
                 directory.mkdir()
                 async with asyncio.timeout(5):
                     while (
-                        csv not in trail.files
+                        csv not in trail.assets
                         or directory not in trail.dirs
                     ):
                         await asyncio.sleep(0.01)
                 # the removals below must not be recorded
                 await trail.watchdog.stop()
 
-                file_entry = trail.files[csv]
+                file_entry = trail.assets[csv]
                 directory_entry = trail.dirs[directory]
-                assert trail.files.by_pos[:] == [file_entry]
-                assert trail.files.ids == [file_entry.id]
+                assert trail.assets.by_pos[:] == [file_entry]
+                assert trail.assets.ids == [file_entry.id]
                 assert trail.dirs.by_pos[:] == [root_entry, directory_entry]
                 assert trail.dirs.ids == [root_entry.id, directory_entry.id]
                 csv.unlink()
                 directory.rmdir()
                 history = trail.events.jsonl.path.read_bytes()
                 restored = Trail(root)
-                assert restored.files.ids == trail.files.ids
+                assert restored.assets.ids == trail.assets.ids
                 assert restored.dirs.ids == trail.dirs.ids
-                assert restored.files.by_pos[0] is restored.files[csv]
-                assert restored.files.by_pos[0].id == file_entry.id
+                assert restored.assets.by_pos[0] is restored.assets[csv]
+                assert restored.assets.by_pos[0].id == file_entry.id
                 assert restored.dirs.by_pos[-1].id == directory_entry.id
                 assert restored.entries.by_pos[-1] is restored.dirs[directory]
                 assert restored.events.jsonl.path.read_bytes() == history
                 restored.unregister(csv, directory)
-                assert restored.files.ids == []
+                assert restored.assets.ids == []
                 assert restored.dirs.ids == [root_entry.id]
                 reloaded = Trail(root)
-                assert reloaded.files.by_pos[:] == []
+                assert reloaded.assets.by_pos[:] == []
                 assert reloaded.dirs.ids == [root_entry.id]
                 await restored.watchdog.stop()
                 await reloaded.watchdog.stop()
@@ -600,9 +600,9 @@ class TestTrail:
 
             assert trail.entries[entry.id] is entry
             assert trail.entries[directory.id] is directory
-            assert trail.files[entry.id] is trail.files[str(csv)]
+            assert trail.assets[entry.id] is trail.assets[str(csv)]
             assert trail.dirs[directory.id] is trail.dirs[root]
-            assert entry.id in trail.files
+            assert entry.id in trail.assets
             assert directory.id in trail.dirs
             assert trail.entries[[entry.id, directory.id]] == (entry, directory)
             checkpoint_record = checkpoint.to_record()
@@ -634,9 +634,9 @@ class TestTrail:
 
             restored = Trail(root)
             assert restored.id == trail.id
-            assert restored.files.ids == [entry.id]
+            assert restored.assets.ids == [entry.id]
             assert restored.events.ids == [event.id]
-            assert restored.entries[entry.id] is restored.files.by_pos[0]
+            assert restored.entries[entry.id] is restored.assets.by_pos[0]
             assert restored.events[event.id].entry is restored.entries[entry.id]
             restored.unregister(csv)
             reloaded = Trail(root)
@@ -655,9 +655,9 @@ class TestTrail:
                 new_file = folder / 'new.csv'
                 new_file.write_text('name,value\nnew,1\n', encoding='utf-8')
                 async with asyncio.timeout(5):
-                    while new_file not in trail.files:
+                    while new_file not in trail.assets:
                         await asyncio.sleep(0.01)
-                new_file_entry = trail.files[new_file]
+                new_file_entry = trail.assets[new_file]
 
                 previous = len(trail.events)
                 with new_file.open(encoding='utf-8') as stream:
@@ -679,9 +679,9 @@ class TestTrail:
                 nested_file = subdirectory / 'nested.csv'
                 nested_file.write_text('name,value\nnested,2\n', encoding='utf-8')
                 async with asyncio.timeout(5):
-                    while nested_file not in trail.files:
+                    while nested_file not in trail.assets:
                         await asyncio.sleep(0.01)
-                nested_file_entry = trail.files[nested_file]
+                nested_file_entry = trail.assets[nested_file]
                 await trail.watchdog.stop()
 
                 assert folder_entry.path == folder
@@ -711,16 +711,16 @@ class TestTrail:
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
 
-                assert trail.files[renamed] is entry
+                assert trail.assets[renamed] is entry
                 assert entry.id == identifier
                 assert entry.path == renamed
-                assert csv not in trail.files
-                assert trail.files.ids == [identifier]
+                assert csv not in trail.assets
+                assert trail.assets.ids == [identifier]
 
                 restored = Trail(root)
-                assert restored.files.ids == [identifier]
-                assert restored.files[renamed].id == identifier
-                assert csv not in restored.files
+                assert restored.assets.ids == [identifier]
+                assert restored.assets[renamed].id == identifier
+                assert csv not in restored.assets
                 await restored.watchdog.stop()
 
         asyncio.run(run())
@@ -741,9 +741,9 @@ class TestTrail:
                 inner = nested / 'inner.csv'
                 inner.write_text('name,value\ninner,1\n', encoding='utf-8')
                 async with asyncio.timeout(5):
-                    while inner not in trail.files:
+                    while inner not in trail.assets:
                         await asyncio.sleep(0.01)
-                inner_entry = trail.files[inner]
+                inner_entry = trail.assets[inner]
 
                 renamed = root / 'renamed'
                 folder.rename(renamed)
@@ -754,14 +754,14 @@ class TestTrail:
 
                 assert trail.dirs[renamed] is folder_entry
                 assert trail.dirs[renamed / 'nested'] is nested_entry
-                assert trail.files[renamed / 'nested' / 'inner.csv'] is inner_entry
+                assert trail.assets[renamed / 'nested' / 'inner.csv'] is inner_entry
                 assert folder not in trail.dirs
-                assert inner not in trail.files
+                assert inner not in trail.assets
 
                 restored = Trail(root)
                 assert restored.dirs.ids == trail.dirs.ids
-                assert restored.files.ids == trail.files.ids
-                assert restored.files[renamed / 'nested' / 'inner.csv'].id == inner_entry.id
+                assert restored.assets.ids == trail.assets.ids
+                assert restored.assets[renamed / 'nested' / 'inner.csv'].id == inner_entry.id
                 await restored.watchdog.stop()
 
         asyncio.run(run())

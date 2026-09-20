@@ -36,7 +36,7 @@ def list_repr(
     return lines
 
 
-def file_repr(
+def asset_repr(
         name: str,
         path: Path | None,
         attributes: Iterable[tuple[str, object]] | None = None,

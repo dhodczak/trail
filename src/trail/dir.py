@@ -50,7 +50,7 @@ class Dir(Entry):
         path = Path(self.path).expanduser().resolve()
         if trail._ignored(path):
             raise ValueError(f"Cannot track Trail metadata: {path}")
-        while self.id in trail.files.id2entry:
+        while self.id in trail.assets.id2entry:
             self.id = uuid4().hex
         previous_path = self.path
         self.path = path
@@ -98,7 +98,7 @@ class Dir(Entry):
         trail = self._trail
         descendants = (
             entry
-            for collection in (trail.files, trail.dirs)
+            for collection in (trail.assets, trail.dirs)
             for entry in tuple(collection.id2entry.values())
             if entry is not self and entry.path.is_relative_to(previous_path)
         )
@@ -128,7 +128,7 @@ class Dir(Entry):
                 if child.is_dir():
                     collection = trail.dirs
                 else:
-                    collection = trail.files
+                    collection = trail.assets
                 pending.append(
                     collection.get(child) or Entry.from_path(child, trail=trail)
                 )

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from trail.node import Node
-from trail.util import file_repr, normalize_id
+from trail.util import asset_repr, normalize_id
 
 if TYPE_CHECKING:
     from trail.event import Event
@@ -61,7 +61,7 @@ class JSONL(Node):
     _parent: Checkpoints
 
     def __repr__(self) -> str:
-        return file_repr(type(self).__name__, self.path)
+        return asset_repr(type(self).__name__, self.path)
 
     @property
     def path(self) -> Path | None:
