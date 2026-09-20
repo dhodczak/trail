@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import UserList
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -7,6 +8,9 @@ from typing import Protocol, overload
 from uuid import UUID
 
 from trail.node import Node
+
+# anything a path can be made from, including any object implementing __fspath__
+PathLike = str | os.PathLike[str] | Path
 
 
 def normalize_id(identifier: str | int) -> str:

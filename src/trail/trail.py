@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable, Iterator, Mapping
 from functools import cached_property
 from pathlib import Path
@@ -12,7 +13,7 @@ from trail.dir import Dirs
 from trail.entry import Entry, EntryKey
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
 from trail.node import Node
-from trail.util import ByPos, asset_repr, items_repr, list_repr, normalize_id
+from trail.util import ByPos, PathLike, asset_repr, items_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
 
 
@@ -104,14 +105,14 @@ class EntryLookup(
                 entry = self._parent.dirs.id2entry.get(key)
             if entry is not None:
                 return entry
-        if isinstance(key, (str, Path)):
+        if isinstance(key, (str, os.PathLike)):
             try:
                 return self._parent.assets[key]
             except KeyError:
                 return self._parent.dirs[key]
         selected = []
         for value in key:
-            if not isinstance(value, (str, Path)):
+            if not isinstance(value, (str, os.PathLike)):
                 raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
@@ -257,7 +258,7 @@ class Trail(Node):
 
     def __init__(
         self,
-        dir: str | Path | None = None,
+        dir: PathLike | None = None,
     ) -> None:
         """TODO: reference Myst's setup for a Trail setup"""
         super().__init__()
@@ -281,7 +282,7 @@ class Trail(Node):
         """
         return uuid4().hex
 
-    def register(self, *paths: str | Path) -> Entry | list[Entry]:
+    def register(self, *paths: PathLike) -> Entry | list[Entry]:
         """Registers the specified filesystem paths with the Trail for tracking."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         for path in requested:
@@ -305,7 +306,7 @@ class Trail(Node):
         """Returns True if the path is relative to the `trail` directory, e.g. `/.trail/ignored"""
         return self.dir is not None and path.is_relative_to(self.dir)
 
-    def unregister(self, *paths: str | Path) -> Entry | list[Entry]:
+    def unregister(self, *paths: PathLike) -> Entry | list[Entry]:
         """Unregisters the specified filesystem paths from the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         unregistered = []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import ItemsView, Iterable, Iterator
 from dataclasses import dataclass, field, fields
 from functools import cached_property
@@ -9,13 +10,14 @@ from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
 from trail.node import Node
-from trail.util import ByPos, items_repr, normalize_id
+from trail.util import ByPos, PathLike, items_repr, normalize_id
 
 if TYPE_CHECKING:
     from trail.event import Event
     from trail.trail import Trail
 
-EntryKey = str | Path
+# an entry is addressed by its hexadecimal ID or by its path
+EntryKey = PathLike
 
 
 @dataclass(kw_only=True, eq=False, repr=False)
@@ -52,7 +54,7 @@ class Entry(Node):
     @classmethod
     def from_path(
         cls,
-        path: str | Path,
+        path: PathLike,
         trail: Trail | None = None,
     ) -> Self:
         from trail.asset import Asset
@@ -122,7 +124,7 @@ class Entry(Node):
     def register(self) -> Self:
         raise NotImplementedError
 
-    def move(self, destination: str | Path) -> Self:
+    def move(self, destination: PathLike) -> Self:
         """
         Repoint a tracked entry at `destination`, keeping its ID and its position in the
         collection, so that renaming a resource outside the process does not fork its identity.
@@ -238,11 +240,11 @@ class Entries[E: Entry](Node):
     ) -> E | tuple[E, ...]:
         if isinstance(key, str) and key in self.id2entry:
             return self.id2entry[key]
-        if isinstance(key, (str, Path)):
+        if isinstance(key, (str, os.PathLike)):
             return self.path2entry[Path(key).expanduser().resolve()]
         selected = []
         for value in key:
-            if not isinstance(value, (str, Path)):
+            if not isinstance(value, (str, os.PathLike)):
                 raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
@@ -281,7 +283,7 @@ class Entries[E: Entry](Node):
     def items(self) -> ItemsView[str, E]:
         return self.id2entry.items()
 
-    def entry(self, *paths: str | Path) -> tuple[E, ...]:
+    def entry(self, *paths: PathLike) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
         for path in paths:
             resolved = Path(path).expanduser().resolve()

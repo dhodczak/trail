@@ -7,6 +7,7 @@ from typing import Self
 from uuid import uuid4
 
 from trail.entry import Entries, Entry
+from trail.util import PathLike
 
 
 class Dir(Entry):
@@ -92,7 +93,7 @@ class Dir(Entry):
         collection.id2entry[self.id] = self
         return self
 
-    def move(self, destination: str | Path) -> Self:
+    def move(self, destination: PathLike) -> Self:
         previous_path = self.path
         super().move(destination)
         trail = self._trail
