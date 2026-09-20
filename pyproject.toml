@@ -5,6 +5,7 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.3.0",
+    "prompt_toolkit>=3.0",
     "watchdog>=6.0",
 ]
 authors = [
@@ -16,10 +17,14 @@ maintainers = [
 ]
 
 
+[project.scripts]
+trail = "trail.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = [
     "trail",
+    "trail.*",
 ]
 
 [dependency-groups]
