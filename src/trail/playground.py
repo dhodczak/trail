@@ -138,15 +138,11 @@ class Node:
     def __fspath__(self) -> str:
         return str(self.path)
 
+    def __str__(self) -> str:
+        return str(self.path)
+
     def __repr__(self) -> str:
-        # deliberately stats rather than reads: a repr evaluated in a debugger or a test must not
-        # emit an `opened` event of its own
-        lines = [
-            type(self).__name__,
-            f'    path: {str(self.path)!r}',
-            f'    exists: {self.exists!r}',
-        ]
-        return '\n'.join(lines)
+        return repr(str(self.path))
 
 
 class Asset(Node):
@@ -173,13 +169,13 @@ class Asset(Node):
         self.path.write_text(content, encoding='utf-8')
         return self
 
-    def open(self) -> str:
+    def open(self) -> Self:
         """
         Read the asset, which is what produces an `opened` event, and return its text. A missing
         asset is created first so a test can go straight to the event it wants.
         """
         self.create()
-        return self.path.read_text(encoding='utf-8')
+        self.path.read_text(encoding='utf-8')
 
     def append(self, *lines: str) -> Self:
         """Append lines, defaulting to one generated line."""
@@ -194,13 +190,6 @@ class Asset(Node):
     def remove(self) -> Self:
         self.path.unlink(missing_ok=True)
         return self
-
-    def __repr__(self) -> str:
-        lines = [super().__repr__()]
-        if self.exists:
-            lines.append(f'    size: {self.path.stat().st_size!r}')
-        return '\n'.join(lines)
-
 
 class CSV(Asset):
     suffix = '.csv'
@@ -282,9 +271,6 @@ class GeoJSON(Asset):
 class Dir(Node):
     """A directory in the playground tree, holding the same members as the playground itself."""
 
-    # paths listed by __repr__ before the remainder is summarized
-    repr_limit = 20
-
     @cached_property
     def csv(self) -> CSV:
         return CSV(self, 'csv')
@@ -340,33 +326,6 @@ class Dir(Node):
         shutil.rmtree(self.path, ignore_errors=True)
         return self
 
-    def __repr__(self) -> str:
-        lines = [
-            type(self).__name__,
-            f'    path: {str(self.path)!r}',
-        ]
-        lines.extend(self._tree())
-        return '\n'.join(lines)
-
-    def _tree(self) -> list[str]:
-        """the tree as it is on disk, which is not the same as the members which exist as nodes"""
-        if not self.exists:
-            return ['    tree: <missing>']
-        paths = sorted(self.path.rglob('*'))
-        if not paths:
-            return ['    tree: []']
-        lines = ['    tree: [']
-        for path in paths[:self.repr_limit]:
-            relative = str(path.relative_to(self.path))
-            if path.is_dir():
-                relative = f'{relative}/'
-            lines.append(f'        {relative!r},')
-        hidden = len(paths) - self.repr_limit
-        if hidden > 0:
-            lines.append(f'        <{hidden} others>')
-        lines.append('    ]')
-        return lines
-
 
 class Playground(Dir):
     """
@@ -403,6 +362,9 @@ class Playground(Dir):
         ]
     """
 
+    # paths listed by __repr__ before the remainder is summarized
+    repr_limit = 20
+
     def __init__(
         self,
         dir: str | Path | None = None,
@@ -417,7 +379,7 @@ class Playground(Dir):
                 tempdir = shared
             else:
                 tempdir = Path(tempfile.gettempdir())
-            dir = tempfile.mkdtemp(prefix='playground-', dir=tempdir)
+            dir = tempfile.mkdtemp(dir=tempdir)
         path = Path(dir).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)
         super().__init__(stem=path.name)
@@ -429,6 +391,36 @@ class Playground(Dir):
     @property
     def _playground(self) -> Playground:
         return self
+
+    def __repr__(self) -> str:
+        lines = [
+            type(self).__name__,
+            f'    path: {str(self.path)!r}',
+        ]
+        lines.extend(self._tree())
+        return '\n'.join(lines)
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def _tree(self) -> list[str]:
+        """the tree as it is on disk, which is not the same as the members which exist as nodes"""
+        if not self.exists:
+            return ['    tree: <missing>']
+        paths = sorted(self.path.rglob('*'))
+        if not paths:
+            return ['    tree: []']
+        lines = ['    tree: [']
+        for path in paths[:self.repr_limit]:
+            relative = str(path.relative_to(self.path))
+            if path.is_dir():
+                relative = f'{relative}/'
+            lines.append(f'        {relative!r},')
+        hidden = len(paths) - self.repr_limit
+        if hidden > 0:
+            lines.append(f'        <{hidden} others>')
+        lines.append('    ]')
+        return lines
 
     def _arm(self) -> None:
         """aim the sweep at the current path, so a playground which moves still cleans up"""
