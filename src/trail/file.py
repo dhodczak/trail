@@ -37,7 +37,7 @@ class File(Entry):
     #     )
     #     return Events(changes, selected)
 
-    def add(self) -> Self:
+    def register(self) -> Self:
         collection = self._parent
         if collection is None:
             raise ValueError("Entry has no Trail; pass trail to from_path")
@@ -82,20 +82,20 @@ class File(Entry):
                 for watched_path in old._watch_paths:
                     if watched_path not in self._watch_paths:
                         watchdog.release(watched_path, old.id)
-                Entry.remove(old)
+                Entry.unregister(old)
             else:
-                old.remove()
+                old.unregister()
         collection.path2entry[path] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
         collection.id2entry[self.id] = self
         return self
 
-    def remove(self) -> None:
+    def unregister(self) -> None:
         if self._parent.id2entry.get(self.id) is not self:
             return
         self._watchdog.release(self.directory, self.id)
-        super().remove()
+        super().unregister()
 
 
 class Files(Entries[File]):

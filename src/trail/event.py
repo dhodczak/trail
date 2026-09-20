@@ -140,11 +140,11 @@ class AddEntryEvent(Event):
             entry = Entry.from_path(self.src_path, trail=trail)
         self.entry = entry
 
-        entry.add()
+        entry.register()
         self.is_directory = entry.path in trail.dirs
         if not replay:
             self._stat(entry)
-        trail._removed_paths.discard(entry.path)
+        trail._unregistered_paths.discard(entry.path)
         return entry
 
     def _stat(self, entry: Entry) -> None:
@@ -176,8 +176,8 @@ class RemoveEntryEvent(Event):
         if entry is None:
             return None
         self.entry = entry
-        entry.remove()
-        trail._removed_paths.add(entry.path)
+        entry.unregister()
+        trail._unregistered_paths.add(entry.path)
         return entry
 
 
@@ -203,7 +203,7 @@ class WatchdogEvent(Event):
             if self.event_type == "moved" and self.dest_path:
                 entry.move(self.dest_path)
             elif self.event_type == "created":
-                entry.add()
+                entry.register()
             return entry
 
         if self.event_type not in {
@@ -220,7 +220,7 @@ class WatchdogEvent(Event):
             destination = Path(self.dest_path).expanduser().resolve()
         for path in (source, destination):
             if path is not None and (
-                path in trail._removed_paths or trail._ignored(path)
+                path in trail._unregistered_paths or trail._ignored(path)
             ):
                 return None
         if self.is_directory:
@@ -249,7 +249,7 @@ class WatchdogEvent(Event):
                     exists = path.is_file()
                 if not exists:
                     return None
-                entry = collection.add(path)[0]
+                entry = collection.entry(path)[0]
             except (FileNotFoundError, NotADirectoryError):
                 return None
         self.src_path = str(source)
@@ -258,7 +258,7 @@ class WatchdogEvent(Event):
             if entry.path != destination:
                 entry.move(destination)
         elif self.event_type == "created":
-            entry.add()
+            entry.register()
         if self.is_directory and self.event_type == "deleted":
             trail.watchdog.invalidate(source)
         self.entry = entry

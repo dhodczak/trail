@@ -225,7 +225,7 @@ class Trail(Node):
         return EntryLookup(self)
 
     @cached_property
-    def _removed_paths(self) -> set[Path]:
+    def _unregistered_paths(self) -> set[Path]:
         return set()
 
     @cached_property
@@ -283,34 +283,34 @@ class Trail(Node):
         """
         return uuid4().hex
 
-    def add(self, *paths: str | Path) -> Entry | list[Entry]:
-        """Adds the specified filesystem paths to the Trail for tracking."""
+    def register(self, *paths: str | Path) -> Entry | list[Entry]:
+        """Registers the specified filesystem paths with the Trail for tracking."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         for path in requested:
             if self._ignored(path):
                 raise ValueError(f"Cannot track Trail metadata: {path}")
             if path not in self.entries:
                 Entry.from_path(path, trail=self)
-        added = []
+        registered = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
                 event = AddEntryEvent(src_path=str(path))
                 entry = event.apply(self)
                 self.events[event.id] = event
-            added.append(entry)
+            registered.append(entry)
         if len(paths) == 1:
-            return added[0]
-        return added
+            return registered[0]
+        return registered
 
     def _ignored(self, path: Path) -> bool:
         """Returns True if the path is relative to the `trail` directory, e.g. `/.trail/ignored"""
         return self.dir is not None and path.is_relative_to(self.dir)
 
-    def remove(self, *paths: str | Path) -> Entry | list[Entry]:
-        """Removes the specified filesystem paths from the Trail."""
+    def unregister(self, *paths: str | Path) -> Entry | list[Entry]:
+        """Unregisters the specified filesystem paths from the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
-        removed = []
+        unregistered = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
@@ -319,10 +319,10 @@ class Trail(Node):
             result = event.apply(self)
             if result is not None:
                 self.events[event.id] = event
-                removed.append(result)
-        if len(paths) == 1 and removed:
-            return removed[0]
-        return removed
+                unregistered.append(result)
+        if len(paths) == 1 and unregistered:
+            return unregistered[0]
+        return unregistered
 
     def push(self):
         """Placeholder for possible remote synchronization"""

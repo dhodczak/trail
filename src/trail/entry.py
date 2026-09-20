@@ -119,7 +119,7 @@ class Entry(Node):
     def walk(self) -> Iterator[Entry]:
         yield self
 
-    def add(self) -> Self:
+    def register(self) -> Self:
         raise NotImplementedError
 
     def move(self, destination: str | Path) -> Self:
@@ -161,15 +161,15 @@ class Entry(Node):
             occupant is not None
             and occupant is not self
         ):
-            occupant.remove()
+            occupant.unregister()
         collection.path2entry[destination] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
             collection.id2entry[self.id] = self
         return self
 
-    def remove(self) -> None:
-        """Remove the entry from the tracked Entries collection."""
+    def unregister(self) -> None:
+        """Unregister the entry from the tracked Entries collection."""
         collection = self._parent
         if collection is None or collection.id2entry.get(self.id) is not self:
             return
@@ -281,7 +281,7 @@ class Entries[E: Entry](Node):
     def items(self) -> ItemsView[str, E]:
         return self.id2entry.items()
 
-    def add(self, *paths: str | Path) -> tuple[E, ...]:
+    def entry(self, *paths: str | Path) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
         for path in paths:
             resolved = Path(path).expanduser().resolve()
@@ -293,17 +293,17 @@ class Entries[E: Entry](Node):
         try:
             for entry in selected.values():
                 if self.id2entry.get(entry.id) is entry:
-                    entry.add()
+                    entry.register()
                     continue
                 while (
                     entry.id in self._trail.files
                     or entry.id in self._trail.dirs
                 ):
                     entry.id = uuid4().hex
-                entry.add()
+                entry.register()
                 registered.append(entry)
         except Exception:
             for entry in reversed(registered):
-                entry.remove()
+                entry.unregister()
             raise
         return tuple(selected.values())

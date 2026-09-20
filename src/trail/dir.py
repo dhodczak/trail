@@ -38,7 +38,7 @@ class Dir(Entry):
     #     )
     #     return Changes(changes, selected)
 
-    def add(self) -> Self:
+    def register(self) -> Self:
         collection = self._parent
         if collection is None:
             raise ValueError("Entry has no Trail; pass trail to from_path")
@@ -83,9 +83,9 @@ class Dir(Entry):
                 for watched_path in old._watch_paths:
                     if watched_path not in self._watch_paths:
                         watchdog.release(watched_path, old.id)
-                Entry.remove(old)
+                Entry.unregister(old)
             else:
-                old.remove()
+                old.unregister()
         collection.path2entry[path] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
@@ -122,7 +122,7 @@ class Dir(Entry):
                 if (
                     child.is_symlink()
                     or trail._ignored(child)
-                    or child in trail._removed_paths
+                    or child in trail._unregistered_paths
                 ):
                     continue
                 if child.is_dir():
@@ -133,12 +133,12 @@ class Dir(Entry):
                     collection.get(child) or Entry.from_path(child, trail=trail)
                 )
 
-    def remove(self) -> None:
+    def unregister(self) -> None:
         if self._parent.id2entry.get(self.id) is not self:
             return
         for path in self._watch_paths:
             self._watchdog.release(path, self.id)
-        super().remove()
+        super().unregister()
 
 
 class Dirs(Entries[Dir]):
