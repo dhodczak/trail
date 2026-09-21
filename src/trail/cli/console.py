@@ -66,6 +66,7 @@ class Console(Node):
         self.root = root
         self.cursor = 0
         self.failed = False
+        self.restarting = False
         self._mouse = True
         self._body: Container | None = None
 
@@ -172,6 +173,19 @@ class Console(Node):
         output = self.application.output
         output.write_raw("\x1b[3J")
         output.flush()
+
+    def restart(self) -> None:
+        """
+        Leaves the session with a note to come back. Nothing here can pick up an edit to the
+        console's own source, since the classes it is built out of were read at import and the
+        registry, the caches and the panes all hang off those; only a new interpreter can. The
+        exec is left to `main` because it has to happen once the application has put the terminal
+        back the way it found it and the watchdog has been shut down, which is the ordinary way
+        out of `run`.
+        """
+        self.restarting = True
+        self.feed.info("restart: reopening on the same command line")
+        self.application.exit()
 
     def reflow(self) -> None:
         """Drops the built layout so the next render lays the panes out as they now stand."""

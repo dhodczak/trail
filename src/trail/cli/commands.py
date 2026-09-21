@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 from prompt_toolkit.completion import CompleteEvent, Completion, PathCompleter
 from prompt_toolkit.document import Document
 
-from trail.cli.command import Command, Listing
+from trail.cli.command import FORCE, Command, Listing
 from trail.cli.node import Node
 from trail.dir import Dir
 from trail.entry import Entries
@@ -44,6 +44,8 @@ NOTES: Final[tuple[str, ...]] = (
     "every listing takes 'clear': 'assets clear -f' unregisters what it lists and",
     "records the removals, while 'events clear -f' discards the log those were kept in",
     "'clear -f' on its own does both, and ctrl-l empties the terminal instead",
+    "'restart' reopens the project in a new process, which is how an edit to the",
+    "console's own source takes effect without losing what was recorded",
 )
 
 # the least `help` indents its descriptions by, whatever it is listing
@@ -503,6 +505,40 @@ class HelpCommand(Command):
             )
         for note in NOTES:
             feed.info(note)
+
+
+class RestartCommand(Command):
+    """
+    Reopens the project in a new interpreter, on the command line this one was given. It is what
+    picks up an edit to the console's own source: a session holds the classes it imported, so a
+    command rewritten underneath it keeps running as it was read.
+
+    What is recorded lives in PATH/.trail and is replayed on the way back up, so a dir-backed
+    session comes back holding what it held, minus the command history and the open columns.
+    Under `--nodir` there is nothing on disk to come back to, so the log goes with the process
+    and the restart has to be confirmed like any other discard.
+    """
+
+    name = "restart"
+    usage = "restart [-f]"
+    summary = "reopen this project in a new process, picking up edits to the console"
+
+    def __call__(self, arguments: Sequence[str]) -> None:
+        trail = self._trail
+        if trail.dir is None:
+            subject = f"restart: nodir, so this discards events {len(trail.events)}"
+            if not self.confirmed(arguments, "restart", subject):
+                return
+        else:
+            unexpected = [
+                token
+                for token in arguments
+                if token not in FORCE
+            ]
+            if unexpected:
+                self._feed.error(f"usage: {self.usage}")
+                return
+        self._console.restart()
 
 
 class QuitCommand(Command):

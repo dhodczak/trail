@@ -16,6 +16,8 @@ from trail.util import items_repr
 if TYPE_CHECKING:
     from trail.cli.console import Console
 
+# NOTE: Column is currently disabled:
+#   using the feature would disable scrolling and copy/paste, which are more more important
 
 class Column(Feed):
     """
