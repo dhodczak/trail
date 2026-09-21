@@ -121,7 +121,7 @@ class Entry(Node):
     def walk(self) -> Iterator[Entry]:
         yield self
 
-    def register(self) -> Self:
+    def track(self) -> Self:
         raise NotImplementedError
 
     def move(self, destination: PathLike) -> Self:
@@ -163,15 +163,15 @@ class Entry(Node):
             occupant is not None
             and occupant is not self
         ):
-            occupant.unregister()
+            occupant.untrack()
         collection.path2entry[destination] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
             collection.id2entry[self.id] = self
         return self
 
-    def unregister(self) -> None:
-        """Unregister the entry from the tracked Entries collection."""
+    def untrack(self) -> None:
+        """Untrack the entry, removing it from the Entries collection holding it."""
         collection = self._parent
         if collection is None or collection.id2entry.get(self.id) is not self:
             return
@@ -285,7 +285,7 @@ class Entries[E: Entry](Node):
 
     def clear(self) -> None:
         """
-        Unregister everything the collection holds. The removals are recorded like any other, so
+        Untrack everything the collection holds. The removals are recorded like any other, so
         that a cleared collection stays cleared rather than coming back with the log's replay.
         """
         paths = tuple(
@@ -294,7 +294,7 @@ class Entries[E: Entry](Node):
         )
         if not paths:
             return
-        self._trail.unregister(*paths)
+        self._trail.untrack(*paths)
 
     def entry(self, *paths: PathLike) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
@@ -304,21 +304,21 @@ class Entries[E: Entry](Node):
                 selected[resolved] = self.get(resolved) or self.entry_type.from_path(
                     resolved, trail=self._trail
                 )
-        registered = []
+        tracked = []
         try:
             for entry in selected.values():
                 if self.id2entry.get(entry.id) is entry:
-                    entry.register()
+                    entry.track()
                     continue
                 while (
                     entry.id in self._trail.assets
                     or entry.id in self._trail.dirs
                 ):
                     entry.id = uuid4().hex
-                entry.register()
-                registered.append(entry)
+                entry.track()
+                tracked.append(entry)
         except Exception:
-            for entry in reversed(registered):
-                entry.unregister()
+            for entry in reversed(tracked):
+                entry.untrack()
             raise
         return tuple(selected.values())

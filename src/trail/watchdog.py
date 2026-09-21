@@ -191,7 +191,7 @@ class Watchdog(Node):
     def ensure(self) -> bool:
         """
         Start observing without a context manager, so a Trail kept alive in a notebook cell or a
-        REPL begins tracking the moment an entry is registered. Returns False when no asyncio loop is
+        REPL begins tracking the moment an entry is tracked. Returns False when no asyncio loop is
         running, leaving the observer dormant until start() or context() is awaited.
         """
         if self.running:
@@ -258,7 +258,7 @@ class Watchdog(Node):
     async def context(self) -> AsyncIterator[Self]:
         """Observe asynchronously, draining queued changes when the context exits.
 
-        Optional: ensure() already starts the observer when entries are registered under a running
+        Optional: ensure() already starts the observer when entries are tracked under a running
         asyncio loop. Use this context when the queue must be drained deterministically at a
         known point rather than whenever the consumer happens to be scheduled.
 
@@ -320,7 +320,7 @@ class Watchdog(Node):
                             resources = tuple(root.walk())
                         except (FileNotFoundError, NotADirectoryError):
                             continue
-                        registered = []
+                        tracked = []
                         try:
                             for resource in resources:
                                 if (
@@ -328,13 +328,13 @@ class Watchdog(Node):
                                     is resource
                                 ):
                                     continue
-                                resource.register()
-                                registered.append(resource)
+                                resource.track()
+                                tracked.append(resource)
                         except Exception:
-                            for resource in reversed(registered):
-                                resource.unregister()
+                            for resource in reversed(tracked):
+                                resource.untrack()
                             raise
-                        for resource in registered:
+                        for resource in tracked:
                             discovered = WatchdogEvent(
                                 src_path=str(resource.path),
                                 event_type="created",

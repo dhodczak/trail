@@ -37,7 +37,7 @@ class Asset(Entry):
     #     )
     #     return Events(changes, selected)
 
-    def register(self) -> Self:
+    def track(self) -> Self:
         collection = self._parent
         if collection is None:
             raise ValueError("Entry has no Trail; pass trail to from_path")
@@ -82,20 +82,20 @@ class Asset(Entry):
                 for watched_path in old._watch_paths:
                     if watched_path not in self._watch_paths:
                         watchdog.release(watched_path, old.id)
-                Entry.unregister(old)
+                Entry.untrack(old)
             else:
-                old.unregister()
+                old.untrack()
         collection.path2entry[path] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
         collection.id2entry[self.id] = self
         return self
 
-    def unregister(self) -> None:
+    def untrack(self) -> None:
         if self._parent.id2entry.get(self.id) is not self:
             return
         self._watchdog.release(self.directory, self.id)
-        super().unregister()
+        super().untrack()
 
 
 class Assets(Entries[Asset]):

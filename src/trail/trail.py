@@ -134,7 +134,7 @@ class EntryLookup(
         return out
 
     def clear(self) -> None:
-        """Unregisters every tracked resource, assets and directories alike."""
+        """Untracks every tracked resource, assets and directories alike."""
         trail = self._parent
         trail.assets.clear()
         trail.dirs.clear()
@@ -230,7 +230,7 @@ class Trail(Node):
         return EntryLookup(self)
 
     @cached_property
-    def _unregistered_paths(self) -> set[Path]:
+    def _untracked_paths(self) -> set[Path]:
         return set()
 
     @cached_property
@@ -288,34 +288,34 @@ class Trail(Node):
         """
         return uuid4().hex
 
-    def register(self, *paths: PathLike) -> Entry | list[Entry]:
-        """Registers the specified filesystem paths with the Trail for tracking."""
+    def track(self, *paths: PathLike) -> Entry | list[Entry]:
+        """Tracks the specified filesystem paths with the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
         for path in requested:
             if self._ignored(path):
                 raise ValueError(f"Cannot track Trail metadata: {path}")
             if path not in self.entries:
                 Entry.from_path(path, trail=self)
-        registered = []
+        tracked = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
                 event = AddEntryEvent(src_path=str(path))
                 entry = event.apply(self)
                 self.events[event.id] = event
-            registered.append(entry)
+            tracked.append(entry)
         if len(paths) == 1:
-            return registered[0]
-        return registered
+            return tracked[0]
+        return tracked
 
     def _ignored(self, path: Path) -> bool:
         """Returns True if the path is relative to the `trail` directory, e.g. `/.trail/ignored"""
         return self.dir is not None and path.is_relative_to(self.dir)
 
-    def unregister(self, *paths: PathLike) -> Entry | list[Entry]:
-        """Unregisters the specified filesystem paths from the Trail."""
+    def untrack(self, *paths: PathLike) -> Entry | list[Entry]:
+        """Untracks the specified filesystem paths from the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
-        unregistered = []
+        untracked = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
@@ -324,14 +324,14 @@ class Trail(Node):
             result = event.apply(self)
             if result is not None:
                 self.events[event.id] = event
-                unregistered.append(result)
-        if len(paths) == 1 and unregistered:
-            return unregistered[0]
-        return unregistered
+                untracked.append(result)
+        if len(paths) == 1 and untracked:
+            return untracked[0]
+        return untracked
 
     def clear(self) -> None:
         """
-        Empties the project record: every resource is unregistered, and the log those
+        Empties the project record: every resource is untracked, and the log those
         registrations were replayed from is then discarded. The Trail keeps its own id, so the
         directory remains the same project rather than becoming a new one.
         """

@@ -33,15 +33,15 @@ KEYS: Final[tuple[tuple[str, str], ...]] = (
 )
 
 NOTES: Final[tuple[str, ...]] = (
-    "registering a directory tracks the directory itself: files created inside it",
+    "tracking a directory tracks the directory itself: files created inside it",
     "afterwards are picked up automatically, files already inside it are not",
     "a column follows one resource, or everything under it when it is a directory,",
-    "and keeps the history it gathered even once the resource is unregistered",
+    "and keeps the history it gathered even once the resource is untracked",
     "the wheel is read by the session, so the terminal's own selection needs shift",
     "a listing pairs its arguments: the one field twice reads as either, two fields both",
     "have to hold, and a slice cuts what they left, so 'events a.csv b.csv -5:' is the",
     "last five records of either file",
-    "every listing takes 'clear': 'assets clear -f' unregisters what it lists and",
+    "every listing takes 'clear': 'assets clear -f' untracks what it lists and",
     "records the removals, while 'events clear -f' discards the log those were kept in",
     "'clear -f' on its own does both, and ctrl-l empties the terminal instead",
     "'restart' reopens the project in a new process, which is how an edit to the",
@@ -52,9 +52,9 @@ NOTES: Final[tuple[str, ...]] = (
 HELP_WIDTH: Final = 20
 
 
-class RegisterCommand(Command):
-    name = "register"
-    usage = "register PATH..."
+class TrackCommand(Command):
+    name = "track"
+    usage = "track PATH..."
     summary = "track files or directories; globs are expanded"
 
     @cached_property
@@ -85,14 +85,14 @@ class RegisterCommand(Command):
                 self._feed.info(f"already tracked: {self.display(path)}")
                 continue
             try:
-                trail.register(path)
+                trail.track(path)
             except (OSError, ValueError) as error:
                 self._feed.error(f"{self.display(path)}: {error}")
 
 
-class UnregisterCommand(Command):
-    name = "unregister"
-    usage = "unregister PATH..."
+class UntrackCommand(Command):
+    name = "untrack"
+    usage = "untrack PATH..."
     summary = "stop tracking; later events for the path are ignored"
 
     def complete(
@@ -100,8 +100,8 @@ class UnregisterCommand(Command):
         document: Document,
         complete_event: CompleteEvent,
     ) -> Iterator[Completion]:
-        """Only a tracked path can be unregistered, so only tracked paths are offered."""
-        yield from self.tracked(self.word(document))
+        """Only a tracked path can be untracked, so only tracked paths are offered."""
+        yield from self.offer(self.word(document))
 
     def __call__(self, arguments: Sequence[str]) -> None:
         if not arguments:
@@ -112,7 +112,7 @@ class UnregisterCommand(Command):
             if path not in trail.entries:
                 self._feed.error(f"not tracked: {self.display(path)}")
                 continue
-            trail.unregister(path)
+            trail.untrack(path)
 
 
 class ColumnCommand(Command):
@@ -148,7 +148,7 @@ class ColumnCommand(Command):
                     yield Completion(action, start_position=-len(word))
             return
         if self._action(tokens[1]) in ("add", "remove"):
-            yield from self.tracked(word)
+            yield from self.offer(word)
 
     def _action(self, token: str) -> str | None:
         if token in self.actions:
@@ -282,7 +282,7 @@ class AssetsCommand(Listing):
 
     def clear(self) -> None:
         """
-        Unregisters everything listed. The removals are recorded like any other, so what was
+        Untracks everything listed. The removals are recorded like any other, so what was
         cleared stays cleared instead of coming back with the next replay of the log.
         """
         self.collection().clear()
@@ -327,7 +327,7 @@ class EventsCommand(Listing):
 
     def clear(self) -> None:
         """
-        Discards the log. What is registered is left alone for this session, but nothing records
+        Discards the log. What is tracked is left alone for this session, but nothing records
         it any more, so the next session opens on a project that was never told about it.
         """
         self._trail.events.clear()
@@ -455,7 +455,7 @@ class ClearCommand(Command):
 
     name = "clear"
     usage = "clear [-f]"
-    summary = "discard the project record: unregister everything, then empty the log"
+    summary = "discard the project record: untrack everything, then empty the log"
 
     def __call__(self, arguments: Sequence[str]) -> None:
         trail = self._trail

@@ -117,8 +117,8 @@ class Event:
 @dataclass(kw_only=True, slots=True, repr=False)
 class AddEntryEvent(Event):
     """
-    Registration of a resource. The recorded size and mtime are the baseline the filesystem is
-    later compared against, so they are sampled once at registration and never refreshed on replay.
+    A resource being tracked. The recorded size and mtime are the baseline the filesystem is
+    later compared against, so they are sampled once here and never refreshed on replay.
     """
 
     src_path: str
@@ -141,16 +141,16 @@ class AddEntryEvent(Event):
             entry = Entry.from_path(self.src_path, trail=trail)
         self.entry = entry
 
-        entry.register()
+        entry.track()
         self.is_directory = entry.path in trail.dirs
         if not replay:
             self._stat(entry)
-        trail._unregistered_paths.discard(entry.path)
+        trail._untracked_paths.discard(entry.path)
         return entry
 
     def _stat(self, entry: Entry) -> None:
-        # a resource may vanish between resolution and registration; an unrecorded
-        # baseline is preferable to refusing the registration outright
+        # a resource may vanish between resolution and being tracked; an unrecorded
+        # baseline is preferable to refusing to track it outright
         try:
             metadata = entry.path.stat()
         except OSError:
@@ -177,8 +177,8 @@ class RemoveEntryEvent(Event):
         if entry is None:
             return None
         self.entry = entry
-        entry.unregister()
-        trail._unregistered_paths.add(entry.path)
+        entry.untrack()
+        trail._untracked_paths.add(entry.path)
         return entry
 
 
@@ -204,7 +204,7 @@ class WatchdogEvent(Event):
             if self.event_type == "moved" and self.dest_path:
                 entry.move(self.dest_path)
             elif self.event_type == "created":
-                entry.register()
+                entry.track()
             return entry
 
         if self.event_type not in {
@@ -221,7 +221,7 @@ class WatchdogEvent(Event):
             destination = Path(self.dest_path).expanduser().resolve()
         for path in (source, destination):
             if path is not None and (
-                path in trail._unregistered_paths or trail._ignored(path)
+                path in trail._untracked_paths or trail._ignored(path)
             ):
                 return None
         if self.is_directory:
@@ -259,7 +259,7 @@ class WatchdogEvent(Event):
             if entry.path != destination:
                 entry.move(destination)
         elif self.event_type == "created":
-            entry.register()
+            entry.track()
         if self.is_directory and self.event_type == "deleted":
             trail.watchdog.invalidate(source)
         self.entry = entry

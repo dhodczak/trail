@@ -72,8 +72,8 @@ class Command(Node):
         """The argument being completed, as a document of its own for a nested completer."""
         return document.get_word_before_cursor(WORD=True)
 
-    def tracked(self, word: str) -> Iterator[Completion]:
-        """Completions drawn from what is registered rather than from the filesystem."""
+    def offer(self, word: str) -> Iterator[Completion]:
+        """Completions drawn from what is tracked rather than from the filesystem."""
         entries = self._trail.entries
         for identifier in entries.ids:
             entry = entries[identifier]
@@ -83,7 +83,7 @@ class Command(Node):
 
     def entry(self, token: str) -> Entry | None:
         """
-        The registered entry an argument names, by hexadecimal id or by path. An id may be given
+        The tracked entry an argument names, by hexadecimal id or by path. An id may be given
         shortened, since that is the only way one is ever displayed; a leading `#` forces the
         token to be read as one, for a resource whose name would otherwise shadow it.
         """
@@ -99,7 +99,7 @@ class Command(Node):
         return self.identified(token)
 
     def identified(self, prefix: str) -> Entry | None:
-        """The one registered entry whose id starts with `prefix`, reporting a tie rather than
+        """The one tracked entry whose id starts with `prefix`, reporting a tie rather than
         resolving it arbitrarily."""
         entries = self._trail.entries
         matches = [
@@ -125,7 +125,7 @@ class Command(Node):
     ) -> list[Path]:
         """
         Resolves the arguments of a command against the project root. A token carrying glob magic
-        is matched against the filesystem, or against the registered paths when `tracked`, so that
+        is matched against the filesystem, or against the tracked paths when `tracked`, so that
         a resource that has already been deleted can still be named.
         """
         selected: dict[Path, None] = {}
@@ -135,7 +135,7 @@ class Command(Node):
                 selected[self.absolute(expanded)] = None
                 continue
             if tracked:
-                matches = self.registered(expanded)
+                matches = self.tracked(expanded)
             else:
                 matches = sorted(
                     self.absolute(Path(match))
@@ -147,7 +147,8 @@ class Command(Node):
                 selected[match] = None
         return list(selected)
 
-    def registered(self, pattern: Path) -> list[Path]:
+    def tracked(self, pattern: Path) -> list[Path]:
+        """The tracked paths a glob matches, which is the pattern `paths` defers to."""
         entries = self._trail.entries
         expanded = str(self.absolute(pattern))
         out = sorted(
