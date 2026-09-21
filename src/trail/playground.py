@@ -342,7 +342,7 @@ class Playground(Dir):
         playground = Playground()
         trail = Trail(playground.path)
         playground.csv.create()
-        trail.register(playground.csv)
+        trail.track(playground.csv)
         playground.csv.open()
         playground.dir.geojson.append()
         playground.dir.move()

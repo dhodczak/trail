@@ -23,15 +23,16 @@ if TYPE_CHECKING:
 MAGIC = ("*", "?", "[")
 # what confirms an action that discards the record rather than adding to it
 FORCE = ("-f", "--force")
-# the action that empties a listing, spelled in full because a bare value is a search
+# the action that empties a listing; it has to be spelled in full, since a bare value is
+# read as something to search for
 CLEAR = "clear"
 
 
 class Command(Node):
     """
-    One verb of the command bar. Subclasses register themselves by name, the way Event subclasses
-    do, so that adding a command is adding a class: the help text, the completion offered for its
-    arguments and the dispatch table are all read back off the registry.
+    One verb of the command bar. Every subclass adds itself to `classes` under its `name`, so
+    adding a command means writing a class and nothing else. The dispatch table, the help text
+    and the argument completion are all read back off `classes`.
     """
 
     _parent: Commands
@@ -65,7 +66,7 @@ class Command(Node):
         path: str | Path,
         directory: bool = False,
     ) -> str:
-        """How this CLI words a path; the panes are handed the same one."""
+        """How this CLI words a path; the feed words it the same way."""
         return self._renderer.display(path, directory)
 
     def word(self, document: Document) -> str:
@@ -83,9 +84,9 @@ class Command(Node):
 
     def entry(self, token: str) -> Entry | None:
         """
-        The tracked entry an argument names, by hexadecimal id or by path. An id may be given
-        shortened, since that is the only way one is ever displayed; a leading `#` forces the
-        token to be read as one, for a resource whose name would otherwise shadow it.
+        The tracked entry an argument names, by id or by path. Ids are only ever displayed
+        shortened, so a prefix of one is accepted. A leading `#` forces the token to be read as
+        an id, for the case where a file's name would otherwise match first.
         """
         entries = self._trail.entries
         if token.startswith("#"):
@@ -99,8 +100,8 @@ class Command(Node):
         return self.identified(token)
 
     def identified(self, prefix: str) -> Entry | None:
-        """The one tracked entry whose id starts with `prefix`, reporting a tie rather than
-        resolving it arbitrarily."""
+        """The one tracked entry whose id starts with `prefix`. A tie is reported rather than
+        picked between."""
         entries = self._trail.entries
         matches = [
             identifier
@@ -124,9 +125,9 @@ class Command(Node):
         tracked: bool = False,
     ) -> list[Path]:
         """
-        Resolves the arguments of a command against the project root. A token carrying glob magic
-        is matched against the filesystem, or against the tracked paths when `tracked`, so that
-        a resource that has already been deleted can still be named.
+        Resolve a command's arguments against the project root. A token holding glob characters
+        is matched against the filesystem, or against the tracked paths when `tracked` is set,
+        which is how a resource that has already been deleted can still be named.
         """
         selected: dict[Path, None] = {}
         for token in arguments:
@@ -148,7 +149,7 @@ class Command(Node):
         return list(selected)
 
     def tracked(self, pattern: Path) -> list[Path]:
-        """The tracked paths a glob matches, which is the pattern `paths` defers to."""
+        """The tracked paths a glob matches; `paths` uses this in place of the filesystem."""
         entries = self._trail.entries
         expanded = str(self.absolute(pattern))
         out = sorted(
@@ -165,9 +166,9 @@ class Command(Node):
         subject: str,
     ) -> bool:
         """
-        Whether an action that discards part of the record may go ahead. Unconfirmed, it reports
-        what would be lost instead of losing it; the log is append-only everywhere else, so
-        nothing else in the console can take something back out of it.
+        Whether an action that discards part of the record may go ahead. Without `-f` it reports
+        what would be lost instead of losing it. The log is append-only everywhere else, so
+        these are the only commands that can take anything back out of it.
         """
         unexpected = [
             token
@@ -194,26 +195,25 @@ COUNT = re.compile(r"\d+")
 
 class Listing(Command):
     """
-    A command that selects out of one of the Trail's collections and prints what it finds the way
-    the feed prints an event. A subclass says what it lists and which of its fields may be named;
-    the grammar and the output are the same for all of them, so a new listing is a declaration:
+    A command that lists one of the Trail's collections, printing each record the way the feed
+    prints an event. A subclass only says what it lists and which fields may be filtered on; the
+    grammar and the output are shared, so a new listing is mostly a declaration:
 
         events                        the last `default` records
-        events :5    -5:    2:7       a slice of them, counted the way Python counts
-        events entry='c9f380c2'       only those whose field holds that value
-        events 'c9f380c2'             the fields tried in turn, to paste back what was shown
+        events :5    -5:    2:7       a slice, counted the way Python counts
+        events entry='c9f380c2'       only records whose `entry` holds that value
+        events 'c9f380c2'             no field named, so the fields are tried in turn
 
-    A bare value is what makes the last form work: the record's own id, then the id of the
-    resource it was recorded against, then the paths, so whatever was copied out of a block
-    finds the thing it came from without being told which field it was.
+    The last form is there so that anything copied out of a printed block can be pasted
+    straight back. The fields are tried in the order `fields` lists them: the record's own id,
+    then the id of the resource it was recorded against, then the paths.
 
-    Arguments pair up. Values naming the one field read as alternatives, values naming
-    different fields all have to hold, and the slices cut whatever the values left, in the
-    order they were written:
+    Arguments combine like this. Two values for one field mean either of them, values for
+    different fields all have to hold, and any slices cut what is left, in the order written:
 
-        assets path/to/asset -5:      the last five of what that path left
+        assets path/to/asset -5:      the last five records for that path
         events a.csv b.csv            either file's records
-        events created a.csv -2:      two fields, so both hold, and then the last two
+        events created a.csv -2:      both fields hold, then the last two
     """
 
     # the fields `field=value` may name, each with the kind of match it takes, in the order a
@@ -269,8 +269,8 @@ class Listing(Command):
 
     def discard(self, arguments: Sequence[str]) -> None:
         """
-        `clear` on a listing. What it holds is counted first, since what is about to go is the
-        only thing it can report once it has gone.
+        `clear` on a listing. The count is taken first, because afterwards there is nothing
+        left to count.
         """
         total = len(self.items())
         if not total:
@@ -288,13 +288,13 @@ class Listing(Command):
         arguments: Sequence[str],
     ) -> list[tuple[int, Repr]] | None:
         """
-        The records the arguments pick out, each with the position it holds in the whole
-        collection, so that a slice or a filter prints the number the collection addresses it by
-        rather than the number it happens to have among the results.
+        The records the arguments pick out, each paired with its position in the whole
+        collection. That position is the collection's own rather than the result's, so a
+        filtered record still prints the number used to address it.
 
-        The values are gathered by the field they name before any of them is applied, which is
-        what lets two of them read as alternatives: the second is looked up against everything
-        the first would have thrown away.
+        Values are grouped by the field they name before any filtering runs. That is what lets
+        two values for one field mean either of them: the second is matched against everything
+        the first would have discarded.
         """
         pairs = list(enumerate(items))
         wanted: dict[str, list[str]] = {}
@@ -331,7 +331,7 @@ class Listing(Command):
     ) -> tuple[str, str] | None:
         """
         The field a token filters on and the value it filters by. A bare value names no field,
-        so the fields are tried in turn and the first that holds it anywhere answers.
+        so the fields are tried in order and the first one that matches any record wins.
         """
         divider = token.find("=")
         if divider > 0:
@@ -356,7 +356,7 @@ class Listing(Command):
         pairs: list[tuple[int, Repr]],
         wanted: dict[str, list[str]],
     ) -> list[tuple[int, Repr]]:
-        """Each field the values named has to hold one of them for a record to be kept."""
+        """A record is kept only if every named field holds one of the values given for it."""
         for name, values in wanted.items():
             pairs = [
                 (position, item)

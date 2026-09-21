@@ -39,7 +39,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         root = Path.cwd()
     else:
         root = Path(arguments.path).expanduser().resolve()
-    # `trail ./.trail` names the metadata of a project rather than a project of its own
+    # `trail ./.trail` names a project's metadata, not a project of its own
     if root.name == ".trail":
         root = root.parent
     if not root.is_dir():
@@ -68,11 +68,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def relaunch() -> NoReturn:
     """
-    Replaces this process with a fresh interpreter on the command line it was given, so that the
-    console comes back having reimported everything it is made of. `sys.orig_argv` is the whole
-    line rather than the arguments left after the interpreter consumed its own, which is what
-    lets `python -m trail` and the `trail` script be restarted the same way; the first token is
-    looked up on PATH because that is where the shell found it.
+    Replace this process with a fresh interpreter running the same command line, so the console
+    comes back having reimported everything.
+
+    `sys.orig_argv` is the full command line, interpreter and its flags included, rather than
+    what argparse is left with. That is what lets `python -m trail` and the `trail` script
+    restart the same way. Its first token is looked up on PATH, since that is how the shell
+    found it.
     """
     sys.stdout.flush()
     sys.stderr.flush()

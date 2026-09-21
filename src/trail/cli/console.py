@@ -15,47 +15,42 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import (
-    AnyContainer,
-    Container,
-    DynamicContainer,
     FormattedTextControl,
     HSplit,
     Layout,
-    VSplit,
     Window,
 )
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.widgets import TextArea
 
-from trail.cli.column import Columns
 from trail.cli.command import CommandCompleter
 from trail.cli.commands import Commands
 from trail.cli.feed import Feed
 from trail.cli.node import Node
 from trail.cli.render import Renderer
-from trail.cli.theme import PROMPT, STYLE, VERTICAL
+from trail.cli.theme import PROMPT, STYLE
 from trail.event import Event
 from trail.trail import Trail
 
 
 class Console(Node):
     """
-    A full-screen session: whatever the watchdog records streams into the feed as it happens,
-    while the command bar below edits the registration that produces those records. The feed on
-    the left takes every event; `column add` opens another beside it, narrowed to one resource.
+    The interactive session. Whatever the watchdog records streams into the feed as it happens,
+    and the command bar below edits what is tracked, which is what produces those records.
+
+    Only the header and the bar are drawn. Everything above them is ordinary terminal output,
+    so scrollback, selection and the scrollbar keep working as they always do; the alternate
+    screen would have taken all three away.
     """
 
     _parent: Trail
-    # seconds between checks that the observer is still alive, which no event would announce
+    # seconds between checks that the observer is still alive; its death announces itself
+    # in no event, so it has to be looked for
     heartbeat = 1.0
-    # the interval redraws are coalesced over while a burst of events arrives
+    # redraws arriving within this interval are coalesced into one
     interval = 0.05
-    # events replayed from previous sessions that are shown on startup
+    # events from previous sessions replayed on startup
     backlog = 20
-    # Panes need the alternate screen, which has no scrollback and is repainted under any
-    # selection the terminal is holding, so copying and scrolling stop being the terminal's to
-    # do. Off, the feed is ordinary output and both work again; the column code is left intact.
-    panes = False
 
     def __init__(
         self,
@@ -67,16 +62,10 @@ class Console(Node):
         self.cursor = 0
         self.failed = False
         self.restarting = False
-        self._mouse = True
-        self._body: Container | None = None
 
     @cached_property
     def feed(self) -> Feed:
         return Feed(self)
-
-    @cached_property
-    def columns(self) -> Columns:
-        return Columns(self)
 
     @cached_property
     def renderer(self) -> Renderer:
@@ -121,109 +110,48 @@ class Console(Node):
         def _clear(event: KeyPressEvent) -> None:
             self.clear()
 
-        @bindings.add("c-o")
-        def _mouse(event: KeyPressEvent) -> None:
-            self.mouse = not self.mouse
-
-        panes = Condition(lambda: self.panes)
-
-        # without panes the scrollback belongs to the terminal, which has its own keys for it
-        @bindings.add("pageup", filter=panes)
-        def _up(event: KeyPressEvent) -> None:
-            self.feed.scroll(-self.feed.page)
-
-        @bindings.add("pagedown", filter=panes)
-        def _down(event: KeyPressEvent) -> None:
-            self.feed.scroll(self.feed.page)
-
         return bindings
-
-    def body(self) -> Container:
-        """
-        The feed and the panes side by side. It is built once per change to the set of panes and
-        held afterwards, because a window carries its own scroll position and a fresh one starts
-        back at the tail.
-        """
-        if self._body is None:
-            children: list[AnyContainer] = [self.feed.container]
-            children.extend(
-                column.container
-                for column in self.columns
-            )
-            self._body = VSplit(
-                children,
-                padding=1,
-                padding_char=VERTICAL,
-                padding_style="class:separator",
-            )
-        return self._body
 
     def clear(self) -> None:
         """
-        Empty the terminal, its scrollback included, leaving what is tracked alone. The rows each
-        pane retains go with it, since those are what `copy` would otherwise hand back.
+        Empty the terminal and its scrollback. Nothing tracked is touched. The feed drops its
+        rows too, so what it holds still matches what is on the screen.
         """
         self.feed.clear()
-        for column in self.columns:
-            column.clear()
         renderer = self.application.renderer
         renderer.clear()
-        # the screen is the renderer's to erase; the scrollback behind it is not, and that is
-        # where everything the console printed has gone
+        # the renderer erases the screen but not the scrollback behind it, and the scrollback
+        # is where everything the console printed has gone
         output = self.application.output
         output.write_raw("\x1b[3J")
         output.flush()
 
     def restart(self) -> None:
         """
-        Leaves the session with a note to come back. Nothing here can pick up an edit to the
-        console's own source, since the classes it is built out of were read at import and the
-        registry, the caches and the panes all hang off those; only a new interpreter can. The
-        exec is left to `main` because it has to happen once the application has put the terminal
-        back the way it found it and the watchdog has been shut down, which is the ordinary way
-        out of `run`.
+        Exit the session with a note to come back.
+
+        A running session cannot pick up an edit to its own source: the classes were read at
+        import, and the registry and the caches are built from those. Only a new interpreter
+        can. `main` performs the exec rather than this method, because it has to wait until the
+        application has restored the terminal and the watchdog has stopped, which is what
+        returning from `run` means.
         """
         self.restarting = True
         self.feed.info("restart: reopening on the same command line")
         self.application.exit()
 
-    def reflow(self) -> None:
-        """Drops the built layout so the next render lays the panes out as they now stand."""
-        self._body = None
-        self.application.invalidate()
-
-    @property
-    def mouse(self) -> bool:
-        """
-        Whether the terminal reports the mouse to the panes. Reporting is what carries the wheel
-        to the pane under the pointer; it is also what takes click-and-drag away from the
-        terminal's own selection, so releasing it is how a reader copies out of a pane.
-        """
-        return self._mouse
-
-    @mouse.setter
-    def mouse(self, enabled: bool) -> None:
-        self._mouse = enabled
-        if enabled:
-            self.feed.info("mouse: held; the wheel scrolls the pane under the pointer")
-        else:
-            self.feed.info(
-                "mouse: released to the terminal; drag to select and copy, "
-                "middle-click to paste, ctrl-o to take it back"
-            )
-        self.application.invalidate()
-
     @staticmethod
     def pasted(data: str) -> str:
         """
-        A paste as the one line the command bar is. A line copied whole out of a terminal arrives
-        padded with spaces out to the terminal's width, and often with the break that ended it;
-        the bar is a single row that scrolls to follow the cursor, so the padding is all the row
-        would have left to show, and the break would put the cursor on a second row it cannot
-        display at all. Either way the bar looks empty while holding what was pasted.
+        Flatten a paste onto the single line the command bar is.
 
-        The ends of each line go and the spaces within one stay, so that a path holding a space
-        survives being pasted.
+        A line copied out of a terminal usually arrives padded with spaces to the terminal's
+        width, often with the newline that ended it. The bar is one row and scrolls to follow
+        the cursor, so it would show only the padding; a newline would move the cursor to a
+        second row it cannot draw at all. Either way the bar looks empty while holding a paste.
+
+        Only the ends of each line are stripped, never the spaces inside one, so a path with a
+        space in it survives.
         """
         lines = [
             line.strip()
@@ -242,18 +170,8 @@ class Console(Node):
             height=1,
             style="class:header",
         )
-        if not self.panes:
-            # only the header and the bar are drawn; everything above them is the terminal's
-            container = HSplit([header, self.input])
-        else:
-            container = HSplit(
-                [
-                    header,
-                    DynamicContainer(self.body),
-                    Window(height=1, char="─", style="class:separator"),
-                    self.input,
-                ]
-            )
+        # everything above these two is the terminal's, printed and never redrawn
+        container = HSplit([header, self.input])
         return Layout(container, focused_element=self.input)
 
     @cached_property
@@ -262,8 +180,6 @@ class Console(Node):
             layout=self.layout,
             key_bindings=self.bindings,
             style=STYLE,
-            full_screen=self.panes,
-            mouse_support=Condition(lambda: self.panes and self._mouse),
             # coalesce the redraws of a burst of filesystem events into one
             min_redraw_interval=self.interval,
         )
@@ -273,8 +189,8 @@ class Console(Node):
         application = self.application
         self._banner()
         self._replay()
-        # the cursor is taken here, before the observer is started, so that nothing recorded
-        # between the replayed backlog and the first wakeup falls between them
+        # taken before the observer starts, so that nothing recorded between the replayed
+        # backlog and the first wakeup slips through the gap
         watching = trail.events.watch()
         async with trail.watchdog.context():
             tasks = [
@@ -294,22 +210,22 @@ class Console(Node):
 
     async def _stream(self, watching: AsyncIterator[Event]) -> None:
         """
-        The watch supplies the wakeup and the cursor supplies the batching, so a burst of
-        filesystem events is rendered in a single pass however many wakeups it delivers.
+        The watch says when to look and the cursor says what is new, so a burst of filesystem
+        events is rendered in one pass, no matter how many wakeups it arrives in.
         """
         async for _event in watching:
             if self._drain():
                 self.application.invalidate()
 
     async def _monitor(self) -> None:
-        """A watch only wakes on an event, so the observer's own health is checked apart."""
+        """The watch only wakes on an event, so a dead observer would never announce itself."""
         watchdog = self._trail.watchdog
         while True:
             await asyncio.sleep(self.heartbeat)
             self._diagnose(watchdog.consumer)
 
     def _diagnose(self, consumer: asyncio.Task[None] | None) -> None:
-        """A consumer that dies takes the live feed with it, so say so rather than fall silent."""
+        """A dead consumer takes the live feed with it, so say so rather than fall silent."""
         if (
             self.failed
             or consumer is None
@@ -324,11 +240,11 @@ class Console(Node):
             self.application.invalidate()
 
     def _drain(self) -> bool:
-        """Writes the events appended to the log since the last sweep to every open feed."""
+        """Write the events appended to the log since the last sweep."""
         events = self._trail.events
         identifiers = events.ids
-        # a cleared log leaves the cursor beyond it, and everything appended afterwards would
-        # go unrendered until the log grew back past where it had been
+        # a cleared log leaves the cursor past the end, and anything appended afterwards would
+        # go unrendered until the log grew back to where the cursor was
         self.cursor = min(self.cursor, len(identifiers))
         if len(identifiers) <= self.cursor:
             return False
@@ -339,9 +255,6 @@ class Console(Node):
         ]
         self.cursor = len(identifiers)
         self.feed.write(pending, start)
-        if self.panes:
-            for column in self.columns:
-                column.write(pending, start)
         return True
 
     def _banner(self) -> None:
@@ -352,10 +265,10 @@ class Console(Node):
             self.feed.info("nodir: events are held in memory and discarded on exit")
         else:
             self.feed.info(f"recording to {renderer.home(trail.dir)}")
-        self.feed.info("nothing is tracked until you register it; 'help' lists the commands")
+        self.feed.info("nothing is tracked until you track it; 'help' lists the commands")
 
     def _replay(self) -> None:
-        """Renders the tail of a previous session's log before the live feed takes over."""
+        """Render the tail of a previous session's log before the live feed takes over."""
         identifiers = self._trail.events.ids
         hidden = len(identifiers) - self.backlog
         if hidden > 0:

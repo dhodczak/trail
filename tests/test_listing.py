@@ -16,8 +16,8 @@ from trail.trail import Trail
 
 class TestListing:
     """
-    The commands that select out of a collection. Panes are off, so a feed prints its rows to the
-    terminal; the printing is swallowed and the rows are read back off the feed instead.
+    The commands that select out of a collection. The feed prints its rows to the terminal;
+    the printing is swallowed and the rows are read back off the feed instead.
     """
 
     @staticmethod
@@ -38,7 +38,7 @@ class TestListing:
             pipe = stack.enter_context(create_pipe_input())
             stack.enter_context(create_app_session(input=pipe, output=DummyOutput()))
             console = Console(Trail(root), root)
-            cls.run(console, "register a.csv b.csv c.csv folder")
+            cls.run(console, "track a.csv b.csv c.csv folder")
             yield console
 
     @staticmethod
@@ -74,7 +74,7 @@ class TestListing:
         with self.session() as console:
             entry = console._trail.assets[console.root / "c.csv"]
             written = self.run(console, f"events entry={entry.id}")
-            # c.csv was registered third, and stays the third record however few are shown
+            # c.csv was tracked third, and stays the third record however few are shown
             assert self.positions(written) == [2]
             assert entry.id in written
 
@@ -124,8 +124,8 @@ class TestListing:
     def test_a_slice_cuts_what_the_values_left(self) -> None:
         with self.session() as console:
             # three records name a.csv, once it has been let go of and taken back
-            self.run(console, "unregister a.csv")
-            self.run(console, "register a.csv")
+            self.run(console, "untrack a.csv")
+            self.run(console, "track a.csv")
             assert self.positions(self.run(console, "events a.csv")) == [0, 4, 5]
             assert self.positions(self.run(console, "events a.csv -2:")) == [4, 5]
             assert self.positions(self.run(console, "events a.csv 1")) == [5]
@@ -208,7 +208,7 @@ class TestListing:
             self.run(console, "events clear -f")
             (console.root / "d.csv").write_text("d\n", encoding="utf-8")
             # the feed's cursor was left beyond a log that had shrunk under it
-            written = self.run(console, "register d.csv")
+            written = self.run(console, "track d.csv")
             assert "AddEntryEvent" in written, written
             assert len(trail.events) == 1
 

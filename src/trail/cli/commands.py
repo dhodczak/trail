@@ -38,7 +38,7 @@ NOTES: Final[tuple[str, ...]] = (
     "console's own source takes effect without losing what was recorded",
 )
 
-# the least `help` indents its descriptions by, whatever it is listing
+# the narrowest `help` will make its usage column, whatever it is listing
 HELP_WIDTH: Final = 20
 
 
@@ -90,7 +90,7 @@ class UntrackCommand(Command):
         document: Document,
         complete_event: CompleteEvent,
     ) -> Iterator[Completion]:
-        """Only a tracked path can be untracked, so only tracked paths are offered."""
+        """Only a tracked path can be untracked, so only those are offered."""
         yield from self.offer(self.word(document))
 
     def __call__(self, arguments: Sequence[str]) -> None:
@@ -127,7 +127,7 @@ class AssetsCommand(Listing):
 
     def clear(self) -> None:
         """
-        Untracks everything listed. The removals are recorded like any other, so what was
+        Untrack everything listed. The removals are recorded like any other event, so what was
         cleared stays cleared instead of coming back with the next replay of the log.
         """
         self.collection().clear()
@@ -172,8 +172,8 @@ class EventsCommand(Listing):
 
     def clear(self) -> None:
         """
-        Discards the log. What is tracked is left alone for this session, but nothing records
-        it any more, so the next session opens on a project that was never told about it.
+        Discard the log. What is tracked stays tracked for this session, but nothing records it
+        any more, so the next session opens on a project that was never told about it.
         """
         self._trail.events.clear()
 
@@ -182,7 +182,7 @@ class EventsCommand(Listing):
         item: Repr,
         name: str,
     ) -> object | None:
-        """The resource is the event's own field rather than a name it holds, so it is read out."""
+        """`entry` is an object on the event rather than a value in its repr, so read its id."""
         if name == "entry":
             if item.entry is None:
                 return None
@@ -192,9 +192,8 @@ class EventsCommand(Listing):
 
 class ClearCommand(Command):
     """
-    The whole project record at once: what `entries clear` and `events clear` do together. It is
-    the one command that takes something back out of an otherwise append-only record, so it says
-    what would go and waits to be told again.
+    The whole project record at once: `entries clear` and `events clear` together. The record is
+    append-only otherwise, so this says what would go and waits to be told a second time.
     """
 
     name = "clear"
@@ -253,14 +252,14 @@ class HelpCommand(Command):
 
 class RestartCommand(Command):
     """
-    Reopens the project in a new interpreter, on the command line this one was given. It is what
-    picks up an edit to the console's own source: a session holds the classes it imported, so a
-    command rewritten underneath it keeps running as it was read.
+    Reopen the project in a new interpreter, on the command line this one was given. This is
+    what picks up an edit to the console's own source: a session holds the classes it imported,
+    so a command rewritten underneath it goes on running as it was first read.
 
     What is recorded lives in PATH/.trail and is replayed on the way back up, so a dir-backed
-    session comes back holding what it held, minus the command history.
-    Under `--nodir` there is nothing on disk to come back to, so the log goes with the process
-    and the restart has to be confirmed like any other discard.
+    session comes back holding what it held, minus the command history. Under `--nodir` there
+    is nothing on disk to come back to, so the log dies with the process and the restart has to
+    be confirmed like any other discard.
     """
 
     name = "restart"
@@ -297,8 +296,9 @@ class QuitCommand(Command):
 
 class Commands(Node):
     """
-    The command set of one Console, built from every registered Command subclass. It lives here
-    rather than beside the base class because it can only be assembled once they are all defined.
+    The command set of one Console, built from every Command subclass in `Command.classes`. It
+    lives here rather than beside the base class because it can only be assembled once all the
+    subclasses are defined.
     """
 
     _parent: Console
@@ -315,7 +315,7 @@ class Commands(Node):
 
     @property
     def listed(self) -> list[Command]:
-        """The commands in definition order, each once, however many names it answers to."""
+        """The commands in definition order, each listed once however many names it answers to."""
         return list(dict.fromkeys(self.data.values()))
 
     def __getitem__(self, key: str) -> Command:
@@ -352,7 +352,7 @@ class Commands(Node):
         return None
 
     def resolve(self, name: str) -> Command | None:
-        """`find`, reporting into the feed when the name picks out no single command."""
+        """`find`, but reports into the feed when a name picks out no single command."""
         command = self.find(name)
         if command is not None:
             return command
