@@ -3,20 +3,51 @@ from __future__ import annotations
 import os
 from collections import UserList
 from collections.abc import Iterable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, overload
+from typing import Final, Protocol, overload
 from uuid import UUID
 
 from trail.node import Node
 
 # anything a path can be made from, including any object implementing __fspath__
 PathLike = str | os.PathLike[str] | Path
+# the units a byte count is worded in, each 1024 of the one before it
+SIZE_UNITS: Final[tuple[str, ...]] = ('KiB', 'MiB', 'GiB', 'TiB')
+# what a stat reports for a resource that has gone since it was tracked
+MISSING: Final = '<missing>'
 
 
 def normalize_id(identifier: str | int) -> str:
     if isinstance(identifier, int):
         return UUID(int=identifier).hex
     return UUID(hex=identifier).hex
+
+
+def st_size_repr(size: int) -> str:
+    """
+    A byte count with its unit. Under a kibibyte it is exact, above it rounded to one decimal
+    place, which is the precision a reader comparing two sizes by eye can use.
+    """
+    if size < 1024:
+        return f'{size} B'
+    scaled = float(size)
+    for unit in SIZE_UNITS[:-1]:
+        scaled /= 1024
+        # promoted on the rounded value, so a size just under a threshold reads '1.0 MiB'
+        # rather than '1024.0 KiB'
+        if round(scaled, 1) < 1024:
+            return f'{scaled:.1f} {unit}'
+    return f'{scaled / 1024:.1f} {SIZE_UNITS[-1]}'
+
+
+def mtime_repr(mtime: float) -> str:
+    """
+    An mtime as a local wall clock. The stored value is seconds since the epoch, which no
+    reader converts in their head, so the repr states the moment instead of the unit.
+    """
+    moment = datetime.fromtimestamp(mtime, UTC).astimezone()
+    return f'{moment:%Y-%m-%d %H:%M:%S}'
 
 
 def list_repr(

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from trail.entry import Entry
 from trail.node import Node
-from trail.util import ByPos, asset_repr, items_repr, normalize_id
+from trail.util import ByPos, asset_repr, items_repr, mtime_repr, normalize_id, st_size_repr
 
 if TYPE_CHECKING:
     from trail.trail import Trail
@@ -50,6 +50,11 @@ class Event:
                 )
             if value is None or value == '':
                 continue
+            # the baseline is stored as the stat reported it; the units are put back here
+            if event_field.name == 'st_size':
+                value = st_size_repr(value)
+            elif event_field.name == 'st_mtime':
+                value = mtime_repr(value)
             yield event_field.name, value
 
     def __repr__(self) -> str:
@@ -122,8 +127,8 @@ class AddEntryEvent(Event):
     """
 
     src_path: str
-    size: int | None = field(default=None, init=False)
-    mtime: float | None = field(default=None, init=False)
+    st_size: int | None = field(default=None, init=False)
+    st_mtime: float | None = field(default=None, init=False)
     is_directory: bool = field(default=False, init=False, repr=False)
     entry: Entry | None = field(default=None, init=False, repr=False)
 
@@ -155,8 +160,8 @@ class AddEntryEvent(Event):
             metadata = entry.path.stat()
         except OSError:
             return
-        self.size = metadata.st_size
-        self.mtime = metadata.st_mtime
+        self.st_size = metadata.st_size
+        self.st_mtime = metadata.st_mtime
 
 
 @dataclass(kw_only=True, slots=True, repr=False)

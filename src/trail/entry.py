@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
 from trail.node import Node
-from trail.util import ByPos, PathLike, items_repr, normalize_id
+from trail.util import MISSING, ByPos, PathLike, items_repr, mtime_repr, normalize_id, st_size_repr
 
 if TYPE_CHECKING:
     from trail.event import Event
@@ -42,6 +42,16 @@ class Entry(Node):
             if entry_field.name == 'path':
                 value = str(value)
             yield entry_field.name, value
+        # both are stat'd on access rather than stored, so a resource that has gone says so
+        # rather than raising out of a repr
+        try:
+            size = st_size_repr(self.st_size)
+            mtime = mtime_repr(self.st_mtime)
+        except OSError:
+            size = MISSING
+            mtime = MISSING
+        yield 'st_size', size
+        yield 'st_mtime', mtime
 
     def __repr__(self) -> str:
         lines = [type(self).__name__]
@@ -100,12 +110,12 @@ class Entry(Node):
         return self.path.parent
 
     @cached_property
-    def size(self) -> int:
+    def st_size(self) -> int:
         """Size of the entry, in bytes."""
         return self.path.stat().st_size
 
     @cached_property
-    def mtime(self) -> float:
+    def st_mtime(self) -> float:
         """Last modification time of the entry, in seconds since the epoch."""
         return self.path.stat().st_mtime
 

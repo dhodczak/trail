@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -111,12 +111,9 @@ class Renderer(Node):
         name: str,
         value: object,
     ) -> str:
-        """A field worded for a reader: a path against the project, an mtime as a wall clock."""
+        """A field worded for a reader: a path against the project, anything else as it reprs."""
         if name.endswith("path"):
             return repr(self.display(value))
-        if name == "mtime" and isinstance(value, (int, float)):
-            moment = datetime.fromtimestamp(value, UTC).astimezone()
-            return repr(f"{moment:%Y-%m-%d %H:%M:%S}")
         return repr(value)
 
     def header(self) -> StyleAndTextTuples:
