@@ -10,7 +10,16 @@ from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
 from trail.node import Node
-from trail.util import MISSING, ByPos, PathLike, items_repr, mtime_repr, normalize_id, st_size_repr
+from trail.util import (
+    MISSING,
+    ByPos,
+    PathLike,
+    bare_repr,
+    items_repr,
+    mtime_repr,
+    normalize_id,
+    st_size_repr,
+)
 
 if TYPE_CHECKING:
     from trail.event import Event
@@ -56,7 +65,7 @@ class Entry(Node):
     def __repr__(self) -> str:
         lines = [type(self).__name__]
         lines.extend(
-            f'    {name}: {value!r}'
+            f'    {name}: {bare_repr(value)}'
             for name, value in self._repr_items()
         )
         return '\n'.join(lines)

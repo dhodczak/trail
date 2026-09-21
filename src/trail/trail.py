@@ -13,7 +13,7 @@ from trail.dir import Dirs
 from trail.entry import Entry, EntryKey
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
 from trail.node import Node
-from trail.util import ByPos, PathLike, asset_repr, items_repr, list_repr, normalize_id
+from trail.util import ByPos, PathLike, asset_repr, bare_repr, items_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
 
 
@@ -351,8 +351,8 @@ class Trail(Node):
             directory = str(self.dir)
         lines = [
             type(self).__name__,
-            f"    id: {self.id!r}",
-            f"    dir: {directory!r}",
+            f"    id: {bare_repr(self.id)}",
+            f"    dir: {bare_repr(directory)}",
         ]
         entries = self.entries
         identifiers = entries.ids

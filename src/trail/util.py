@@ -50,6 +50,20 @@ def mtime_repr(mtime: float) -> str:
     return f'{moment:%Y-%m-%d %H:%M:%S}'
 
 
+def bare_repr(value: object) -> str:
+    """
+    A field as a reader wants to paste it: a string as itself, anything else as it reprs. The
+    quotes go back on only when they are what keeps the line legible, which is when the string
+    is empty, when whitespace at either end of it would otherwise be invisible, or when a
+    character in it would not survive being printed into the feed.
+    """
+    if not isinstance(value, str):
+        return repr(value)
+    if not value or value != value.strip() or not value.isprintable():
+        return repr(value)
+    return value
+
+
 def list_repr(
         name: str,
         shown: Iterable[object],
@@ -62,7 +76,7 @@ def list_repr(
     lines = [f'{indent}{name}: [']
     displayed = 0
     for value in shown:
-        lines.append(f'{indent * 2}{value!r},')
+        lines.append(f'{indent * 2}{bare_repr(value)},')
         displayed += 1
     hidden = total - displayed
     if hidden > 0:
@@ -84,7 +98,7 @@ def asset_repr(
             displayed_path = str(path)
         attributes = [('path', displayed_path)]
     lines.extend(
-        f'    {key}: {value!r}'
+        f'    {key}: {bare_repr(value)}'
         for key, value in attributes
     )
     if path is None:
@@ -134,7 +148,7 @@ def items_repr(
     for position, item in enumerate(items):
         lines.append(f'    {position}. {type(item).__name__}')
         lines.extend(
-            f'        {key}: {value!r}'
+            f'        {key}: {bare_repr(value)}'
             for key, value in item._repr_items()
         )
     return '\n'.join(lines)

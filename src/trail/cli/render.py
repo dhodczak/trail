@@ -11,7 +11,7 @@ from trail.cli.node import Node
 from trail.cli.theme import INDENT, VERB_STYLES
 from trail.dir import Dir
 from trail.event import AddEntryEvent, Event, RemoveEntryEvent, WatchdogEvent
-from trail.util import Repr
+from trail.util import Repr, bare_repr
 
 if TYPE_CHECKING:
     from trail.cli.console import Console
@@ -94,7 +94,7 @@ class Renderer(Node):
         entry = getattr(item, "entry", None)
         if entry is None:
             return
-        yield "entry", repr(entry.id)
+        yield "entry", bare_repr(entry.id)
 
     def parameter(
         self,
@@ -113,8 +113,8 @@ class Renderer(Node):
     ) -> str:
         """A field worded for a reader: a path against the project, anything else as it reprs."""
         if name.endswith("path"):
-            return repr(self.display(value))
-        return repr(value)
+            value = self.display(value)
+        return bare_repr(value)
 
     def header(self) -> StyleAndTextTuples:
         trail = self._trail
