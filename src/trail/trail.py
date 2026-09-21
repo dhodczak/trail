@@ -133,6 +133,12 @@ class EntryLookup(
         out += len(self._parent.dirs)
         return out
 
+    def clear(self) -> None:
+        """Unregisters every tracked resource, assets and directories alike."""
+        trail = self._parent
+        trail.assets.clear()
+        trail.dirs.clear()
+
 
 class Trail(Node):
     """
@@ -322,6 +328,15 @@ class Trail(Node):
         if len(paths) == 1 and unregistered:
             return unregistered[0]
         return unregistered
+
+    def clear(self) -> None:
+        """
+        Empties the project record: every resource is unregistered, and the log those
+        registrations were replayed from is then discarded. The Trail keeps its own id, so the
+        directory remains the same project rather than becoming a new one.
+        """
+        self.entries.clear()
+        self.events.clear()
 
     def push(self):
         """Placeholder for possible remote synchronization"""

@@ -283,6 +283,19 @@ class Entries[E: Entry](Node):
     def items(self) -> ItemsView[str, E]:
         return self.id2entry.items()
 
+    def clear(self) -> None:
+        """
+        Unregister everything the collection holds. The removals are recorded like any other, so
+        that a cleared collection stays cleared rather than coming back with the log's replay.
+        """
+        paths = tuple(
+            self.id2entry[identifier].path
+            for identifier in self.ids
+        )
+        if not paths:
+            return
+        self._trail.unregister(*paths)
+
     def entry(self, *paths: PathLike) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
         for path in paths:
