@@ -27,7 +27,7 @@ STYLE: Final = Style.from_dict(
         "error": "ansired bold",
         "event": "ansiblue",
         "event.tracked": "ansigreen bold",
-        "event.untracked": "ansired bold",
+        "event.offtrailed": "ansired bold",
         "event.created": "ansigreen",
         "event.discovered": "ansigreen",
         "event.modified": "ansiyellow",
@@ -40,7 +40,7 @@ STYLE: Final = Style.from_dict(
 
 VERB_STYLES: Final[dict[str, str]] = {
     "tracked": "class:event.tracked",
-    "untracked": "class:event.untracked",
+    "offtrailed": "class:event.offtrailed",
     "created": "class:event.created",
     "discovered": "class:event.discovered",
     "modified": "class:event.modified",

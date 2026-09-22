@@ -157,7 +157,7 @@ class Renderer(Node):
         if isinstance(event, AddEntryEvent):
             return "tracked"
         if isinstance(event, RemoveEntryEvent):
-            return "untracked"
+            return "offtrailed"
         if isinstance(event, WatchdogEvent):
             # a synthetic creation is a resource the walk of a new directory turned up
             if event.is_synthetic and event.event_type == "created":

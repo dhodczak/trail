@@ -82,20 +82,20 @@ class Asset(Entry):
                 for watched_path in old._watch_paths:
                     if watched_path not in self._watch_paths:
                         watchdog.release(watched_path, old.id)
-                Entry.untrack(old)
+                Entry.offtrail(old)
             else:
-                old.untrack()
+                old.offtrail()
         collection.path2entry[path] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
         collection.id2entry[self.id] = self
         return self
 
-    def untrack(self) -> None:
+    def offtrail(self) -> None:
         if self._parent.id2entry.get(self.id) is not self:
             return
         self._watchdog.release(self.directory, self.id)
-        super().untrack()
+        super().offtrail()
 
 
 class Assets(Entries[Asset]):

@@ -134,7 +134,7 @@ class EntryLookup(
         return out
 
     def clear(self) -> None:
-        """Untracks every tracked resource, assets and directories alike."""
+        """Offtrails every tracked resource, assets and directories alike."""
         trail = self._parent
         trail.assets.clear()
         trail.dirs.clear()
@@ -230,7 +230,7 @@ class Trail(Node):
         return EntryLookup(self)
 
     @cached_property
-    def _untracked_paths(self) -> set[Path]:
+    def _offtrailed_paths(self) -> set[Path]:
         return set()
 
     @cached_property
@@ -312,10 +312,10 @@ class Trail(Node):
         """Returns True if the path is relative to the `trail` directory, e.g. `/.trail/ignored"""
         return self.dir is not None and path.is_relative_to(self.dir)
 
-    def untrack(self, *paths: PathLike) -> Entry | list[Entry]:
-        """Untracks the specified filesystem paths from the Trail."""
+    def offtrail(self, *paths: PathLike) -> Entry | list[Entry]:
+        """Offtrails the specified filesystem paths from the Trail."""
         requested = dict.fromkeys(Path(path).expanduser().resolve() for path in paths)
-        untracked = []
+        offtrailed = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
@@ -324,14 +324,14 @@ class Trail(Node):
             result = event.apply(self)
             if result is not None:
                 self.events[event.id] = event
-                untracked.append(result)
-        if len(paths) == 1 and untracked:
-            return untracked[0]
-        return untracked
+                offtrailed.append(result)
+        if len(paths) == 1 and offtrailed:
+            return offtrailed[0]
+        return offtrailed
 
     def clear(self) -> None:
         """
-        Empties the project record: every resource is untracked, and the log those
+        Empties the project record: every resource is offtrailed, and the log those
         registrations were replayed from is then discarded. The Trail keeps its own id, so the
         directory remains the same project rather than becoming a new one.
         """

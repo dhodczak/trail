@@ -84,9 +84,9 @@ class Dir(Entry):
                 for watched_path in old._watch_paths:
                     if watched_path not in self._watch_paths:
                         watchdog.release(watched_path, old.id)
-                Entry.untrack(old)
+                Entry.offtrail(old)
             else:
-                old.untrack()
+                old.offtrail()
         collection.path2entry[path] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
@@ -123,7 +123,7 @@ class Dir(Entry):
                 if (
                     child.is_symlink()
                     or trail._ignored(child)
-                    or child in trail._untracked_paths
+                    or child in trail._offtrailed_paths
                 ):
                     continue
                 if child.is_dir():
@@ -134,12 +134,12 @@ class Dir(Entry):
                     collection.get(child) or Entry.from_path(child, trail=trail)
                 )
 
-    def untrack(self) -> None:
+    def offtrail(self) -> None:
         if self._parent.id2entry.get(self.id) is not self:
             return
         for path in self._watch_paths:
             self._watchdog.release(path, self.id)
-        super().untrack()
+        super().offtrail()
 
 
 class Dirs(Entries[Dir]):

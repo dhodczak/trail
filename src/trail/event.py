@@ -150,7 +150,7 @@ class AddEntryEvent(Event):
         self.is_directory = entry.path in trail.dirs
         if not replay:
             self._stat(entry)
-        trail._untracked_paths.discard(entry.path)
+        trail._offtrailed_paths.discard(entry.path)
         return entry
 
     def _stat(self, entry: Entry) -> None:
@@ -182,8 +182,8 @@ class RemoveEntryEvent(Event):
         if entry is None:
             return None
         self.entry = entry
-        entry.untrack()
-        trail._untracked_paths.add(entry.path)
+        entry.offtrail()
+        trail._offtrailed_paths.add(entry.path)
         return entry
 
 
@@ -226,7 +226,7 @@ class WatchdogEvent(Event):
             destination = Path(self.dest_path).expanduser().resolve()
         for path in (source, destination):
             if path is not None and (
-                path in trail._untracked_paths or trail._ignored(path)
+                path in trail._offtrailed_paths or trail._ignored(path)
             ):
                 return None
         if self.is_directory:

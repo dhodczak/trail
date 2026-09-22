@@ -182,15 +182,15 @@ class Entry(Node):
             occupant is not None
             and occupant is not self
         ):
-            occupant.untrack()
+            occupant.offtrail()
         collection.path2entry[destination] = self
         if self.id not in collection.id2entry:
             collection.ids.append(self.id)
             collection.id2entry[self.id] = self
         return self
 
-    def untrack(self) -> None:
-        """Untrack the entry, removing it from the Entries collection holding it."""
+    def offtrail(self) -> None:
+        """Offtrail the entry, removing it from the Entries collection holding it."""
         collection = self._parent
         if collection is None or collection.id2entry.get(self.id) is not self:
             return
@@ -304,7 +304,7 @@ class Entries[E: Entry](Node):
 
     def clear(self) -> None:
         """
-        Untrack everything the collection holds. The removals are recorded like any other, so
+        Offtrail everything the collection holds. The removals are recorded like any other, so
         that a cleared collection stays cleared rather than coming back with the log's replay.
         """
         paths = tuple(
@@ -313,7 +313,7 @@ class Entries[E: Entry](Node):
         )
         if not paths:
             return
-        self._trail.untrack(*paths)
+        self._trail.offtrail(*paths)
 
     def entry(self, *paths: PathLike) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
@@ -338,6 +338,6 @@ class Entries[E: Entry](Node):
                 tracked.append(entry)
         except Exception:
             for entry in reversed(tracked):
-                entry.untrack()
+                entry.offtrail()
             raise
         return tuple(selected.values())

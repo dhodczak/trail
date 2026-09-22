@@ -31,7 +31,7 @@ NOTES: Final[tuple[str, ...]] = (
     "a listing pairs its arguments: the one field twice reads as either, two fields both",
     "have to hold, and a slice cuts what they left, so 'events a.csv b.csv -5:' is the",
     "last five records of either file",
-    "every listing takes 'clear': 'assets clear -f' untracks what it lists and",
+    "every listing takes 'clear': 'assets clear -f' offtrails what it lists and",
     "records the removals, while 'events clear -f' discards the log those were kept in",
     "'clear -f' on its own does both, and ctrl-l empties the terminal instead",
     "'restart' reopens the project in a new process, which is how an edit to the",
@@ -90,7 +90,7 @@ class UntrackCommand(Command):
         document: Document,
         complete_event: CompleteEvent,
     ) -> Iterator[Completion]:
-        """Only a tracked path can be untracked, so only those are offered."""
+        """Only a tracked path can be offtrailed, so only those are offered."""
         yield from self.offer(self.word(document))
 
     def __call__(self, arguments: Sequence[str]) -> None:
@@ -102,7 +102,7 @@ class UntrackCommand(Command):
             if path not in trail.entries:
                 self._feed.error(f"not tracked: {self.display(path)}")
                 continue
-            trail.untrack(path)
+            trail.offtrail(path)
 
 
 class AssetsCommand(Listing):
@@ -127,7 +127,7 @@ class AssetsCommand(Listing):
 
     def clear(self) -> None:
         """
-        Untrack everything listed. The removals are recorded like any other event, so what was
+        Offtrail everything listed. The removals are recorded like any other event, so what was
         cleared stays cleared instead of coming back with the next replay of the log.
         """
         self.collection().clear()
@@ -198,7 +198,7 @@ class ClearCommand(Command):
 
     name = "clear"
     usage = "clear [-f]"
-    summary = "discard the project record: untrack everything, then empty the log"
+    summary = "discard the project record: offtrail everything, then empty the log"
 
     def __call__(self, arguments: Sequence[str]) -> None:
         trail = self._trail

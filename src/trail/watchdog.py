@@ -332,7 +332,7 @@ class Watchdog(Node):
                                 tracked.append(resource)
                         except Exception:
                             for resource in reversed(tracked):
-                                resource.untrack()
+                                resource.offtrail()
                             raise
                         for resource in tracked:
                             discovered = WatchdogEvent(
