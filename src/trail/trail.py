@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import json
-import os
-from collections.abc import Iterable, Iterator, Mapping
 from functools import cached_property
 from pathlib import Path
-from typing import overload
 from uuid import uuid4
 
 from trail.asset import Assets
 from trail.dir import Dirs
-from trail.entry import Entry, EntryKey
+from trail.entry import Entries, Entry
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
 from trail.node import Node
-from trail.util import ByPos, PathLike, asset_repr, bare_repr, items_repr, list_repr, normalize_id
+from trail.util import PathLike, asset_repr, bare_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
 
 
@@ -63,83 +60,6 @@ class JSON(Node):
             return None
 
 
-class EntryLookup(
-    Mapping[EntryKey, Entry],
-    Node,
-):
-    """
-    Lookup class for filesystme entries in a Trail; wraps `Trail.assets` and `Trail.dirs` into a single mapping.
-    """
-
-    _parent: Trail
-    _repr_name = "Entries"
-
-    @property
-    def ids(self) -> list[str]:
-        return self._parent.assets.ids + self._parent.dirs.ids
-
-    @cached_property
-    def by_pos(self) -> ByPos[Entry]:
-        return ByPos(self)
-
-    def __repr__(self) -> str:
-        return items_repr(
-            self._repr_name,
-            (self[identifier] for identifier in self.ids),
-        )
-
-    @overload
-    def __getitem__(self, key: EntryKey) -> Entry: ...
-
-    @overload
-    def __getitem__(self, key: Iterable[EntryKey]) -> tuple[Entry, ...]: ...
-
-    def __getitem__(
-        self,
-        key: EntryKey | Iterable[EntryKey],
-    ) -> Entry | tuple[Entry, ...]:
-        """Returns an Entry object (Asset, Dir) or a tuple of Entry objects based on the provided key(s)."""
-        if isinstance(key, str):
-            entry = self._parent.assets.id2entry.get(key)
-            if entry is None:
-                entry = self._parent.dirs.id2entry.get(key)
-            if entry is not None:
-                return entry
-        if isinstance(key, (str, os.PathLike)):
-            try:
-                return self._parent.assets[key]
-            except KeyError:
-                return self._parent.dirs[key]
-        selected = []
-        for value in key:
-            if not isinstance(value, (str, os.PathLike)):
-                raise TypeError("Expected a path or entry ID")
-            selected.append(self[value])
-        return tuple(selected)
-
-    def __iter__(self) -> Iterator[str]:
-        """Iterates across all Entry IDs in the Trail, including both assets and directories."""
-        yield from self._parent.assets
-        yield from self._parent.dirs
-
-    def items(self):
-        """Returns an iterator over (Entry ID, Entry) pairs for all entries in the Trail."""
-        yield from self._parent.assets.items()
-        yield from self._parent.dirs.items()
-
-    def __len__(self) -> int:
-        """Returns the total number of entries in the Trail, including both assets and directories."""
-        out = len(self._parent.assets)
-        out += len(self._parent.dirs)
-        return out
-
-    def clear(self) -> None:
-        """Offtrails every tracked resource, assets and directories alike."""
-        trail = self._parent
-        trail.assets.clear()
-        trail.dirs.clear()
-
-
 class Trail(Node):
     """
 
@@ -148,10 +68,10 @@ class Trail(Node):
     id: '6617127da84b49e481b612c0418244c5'
     dir: '/tmp/tmpfnmpus7h/.trail'
     entries: [
-        '/tmp/tmpfnmpus7h/folder/new.csv',
-        '/tmp/tmpfnmpus7h/folder/nested/nested.csv',
         '/tmp/tmpfnmpus7h/folder',
+        '/tmp/tmpfnmpus7h/folder/new.csv',
         '/tmp/tmpfnmpus7h/folder/nested',
+        '/tmp/tmpfnmpus7h/folder/nested/nested.csv',
     ]
     """
 
@@ -208,26 +128,28 @@ class Trail(Node):
         return Dirs(self)
 
     @cached_property
-    def entries(self) -> EntryLookup:
+    def entries(self) -> Entries[Entry]:
         """
-        Returns an EntryLookup, which provides a unified interface to access both Asset and Dir entries in the Trail.
+        Returns an Entries instance, which contains the mapping of IDs and paths to every tracked
+        entry in the Trail, Asset and Dir alike, in the order they were tracked. Every change made
+        to `assets` or `dirs` is made here as well.
 
         >>> self.entries
         Entries (4)
-            0. Asset
-                id: '41d3f259a5fc4c1fa13c516cf892f56e'
-                path: '/tmp/tmpbzh09nb5/folder/new.csv'
-            1. Asset
-                id: '6e564e209ff44bafa32cf75d9ffcd844'
-                path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
-            2. Dir
+            0. Dir
                 id: 'decbe4d041fa4c1893da693c70ad9105'
                 path: '/tmp/tmpbzh09nb5/folder'
-            3. Dir
+            1. Asset
+                id: '41d3f259a5fc4c1fa13c516cf892f56e'
+                path: '/tmp/tmpbzh09nb5/folder/new.csv'
+            2. Dir
                 id: 'f48807577f1d454a9caa6814af452d8e'
                 path: '/tmp/tmpbzh09nb5/folder/nested'
+            3. Asset
+                id: '6e564e209ff44bafa32cf75d9ffcd844'
+                path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
         """
-        return EntryLookup(self)
+        return Entries(self)
 
     @cached_property
     def _offtrailed_paths(self) -> set[Path]:

@@ -175,29 +175,25 @@ class Entry(Node):
         for watched_path in previous_watches:
             if watched_path not in self._watch_paths:
                 watchdog.release(watched_path, self.id)
-        if collection.path2entry.get(previous_path) is self:
-            del collection.path2entry[previous_path]
-        occupant = collection.path2entry.get(destination)
+        # a path holds one entry whichever its kind
+        occupant = trail.entries.path2entry.get(destination)
         if (
             occupant is not None
             and occupant is not self
         ):
             occupant.offtrail()
-        collection.path2entry[destination] = self
-        if self.id not in collection.id2entry:
-            collection.ids.append(self.id)
-            collection.id2entry[self.id] = self
+        collection.repath(self, previous_path)
         return self
 
     def offtrail(self) -> None:
-        """Offtrail the entry, removing it from the Entries collection holding it."""
+        """Offtrail the entry, removing it from the collections holding it."""
         collection = self._parent
-        if collection is None or collection.id2entry.get(self.id) is not self:
+        if (
+            collection is None
+            or collection.id2entry.get(self.id) is not self
+        ):
             return
-        del collection.id2entry[self.id]
-        collection.ids.remove(self.id)
-        if collection.path2entry.get(self.path) is self:
-            del collection.path2entry[self.path]
+        del collection[self.id]
 
 
 class Entries[E: Entry](Node):
@@ -206,21 +202,21 @@ class Entries[E: Entry](Node):
 
     >>> trail.entries
     Entries (4)
-        0. Asset
-            id: '41d3f259a5fc4c1fa13c516cf892f56e'
-            path: '/tmp/tmpbzh09nb5/folder/new.csv'
-        1. Asset
-            id: '6e564e209ff44bafa32cf75d9ffcd844'
-            path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
-        2. Dir
+        0. Dir
             id: 'decbe4d041fa4c1893da693c70ad9105'
             path: '/tmp/tmpbzh09nb5/folder'
-        3. Dir
+        1. Asset
+            id: '41d3f259a5fc4c1fa13c516cf892f56e'
+            path: '/tmp/tmpbzh09nb5/folder/new.csv'
+        2. Dir
             id: 'f48807577f1d454a9caa6814af452d8e'
             path: '/tmp/tmpbzh09nb5/folder/nested'
+        3. Asset
+            id: '6e564e209ff44bafa32cf75d9ffcd844'
+            path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
     """
     _parent: Trail
-    entry_type: type[E]
+    entry_type: type[E] = Entry
 
     def __init__(self, parent: Trail | None = None) -> None:
         Node.__init__(self, parent)
@@ -247,6 +243,18 @@ class Entries[E: Entry](Node):
     def id2entry(self) -> dict[str, E]:
         return {}
 
+    @property
+    def _synced(self) -> Iterator[Self]:
+        trail = self._trail
+        # the trail's own assets and dirs are what `Trail.entries` is made of, so a change to
+        # either is made to it as well; any other collection, a copy included, stands alone
+        yield self
+        if (
+            self is trail.assets
+            or self is trail.dirs
+        ):
+            yield trail.entries
+
     @overload
     def __getitem__(self, key: EntryKey) -> E: ...
 
@@ -267,6 +275,39 @@ class Entries[E: Entry](Node):
                 raise TypeError("Expected a path or entry ID")
             selected.append(self[value])
         return tuple(selected)
+
+    def __setitem__(
+        self,
+        key: str,
+        value: E,
+    ) -> None:
+        if not isinstance(value, self.entry_type):
+            raise TypeError(f"Expected {self.entry_type.__name__}, got {type(value).__name__}")
+        if key != value.id:
+            raise ValueError(f"Entry ID does not match its key: {key}")
+        for collection in self._synced:
+            if key not in collection.id2entry:
+                collection.ids.append(key)
+            collection.id2entry[key] = value
+            collection.path2entry[value.path] = value
+
+    def __delitem__(self, key: EntryKey) -> None:
+        entry = self[key]
+        for collection in self._synced:
+            del collection.id2entry[entry.id]
+            collection.ids.remove(entry.id)
+            if collection.path2entry.get(entry.path) is entry:
+                del collection.path2entry[entry.path]
+
+    def repath(
+        self,
+        entry: E,
+        previous: Path,
+    ) -> None:
+        for collection in self._synced:
+            if collection.path2entry.get(previous) is entry:
+                del collection.path2entry[previous]
+        self[entry.id] = entry
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.id2entry)
@@ -320,8 +361,9 @@ class Entries[E: Entry](Node):
         for path in paths:
             resolved = Path(path).expanduser().resolve()
             if resolved not in selected:
-                selected[resolved] = self.get(resolved) or self.entry_type.from_path(
-                    resolved, trail=self._trail
+                selected[resolved] = (
+                    self.get(resolved)
+                    or self.entry_type.from_path(resolved, trail=self._trail)
                 )
         tracked = []
         try:
@@ -329,10 +371,7 @@ class Entries[E: Entry](Node):
                 if self.id2entry.get(entry.id) is entry:
                     entry.track()
                     continue
-                while (
-                    entry.id in self._trail.assets
-                    or entry.id in self._trail.dirs
-                ):
+                while entry.id in self._trail.entries:
                     entry.id = uuid4().hex
                 entry.track()
                 tracked.append(entry)

@@ -84,40 +84,16 @@ class Command(Node):
 
     def entry(self, token: str) -> Entry | None:
         """
-        The tracked entry an argument names, by id or by path. Ids are only ever displayed
-        shortened, so a prefix of one is accepted. A leading `#` forces the token to be read as
-        an id, for the case where a file's name would otherwise match first.
+        The tracked entry an argument names, by id or by path. A leading `#` forces the token to
+        be read as an id, for the case where a file's name would otherwise match first.
         """
         entries = self._trail.entries
         if token.startswith("#"):
-            return self.identified(token[1:])
+            return entries.id2entry.get(token[1:])
         found = entries.get(token)
         if found is not None:
             return found
-        found = entries.get(self.absolute(Path(token).expanduser()))
-        if found is not None:
-            return found
-        return self.identified(token)
-
-    def identified(self, prefix: str) -> Entry | None:
-        """The one tracked entry whose id starts with `prefix`. A tie is reported rather than
-        picked between."""
-        entries = self._trail.entries
-        matches = [
-            identifier
-            for identifier in entries.ids
-            if identifier.startswith(prefix)
-        ]
-        if len(matches) > 1:
-            shown = ", ".join(
-                f"#{identifier[:8]}"
-                for identifier in matches
-            )
-            self._feed.error(f"ambiguous id {prefix!r}: {shown}")
-            return None
-        if not matches:
-            return None
-        return entries[matches[0]]
+        return entries.get(self.absolute(Path(token).expanduser()))
 
     def paths(
         self,
@@ -201,8 +177,10 @@ class Listing(Command):
 
         events                        the last `default` records
         events :5    -5:    2:7       a slice, counted the way Python counts
-        events entry='c9f380c2'       only records whose `entry` holds that value
-        events 'c9f380c2'             no field named, so the fields are tried in turn
+        events entry='c9f380c2737c467fa0aad96d70340999'
+                                      only records whose `entry` holds that value
+        events 'c9f380c2737c467fa0aad96d70340999'
+                                      no field named, so the fields are tried in turn
 
     The last form is there so that anything copied out of a printed block can be pasted
     straight back. The fields are tried in the order `fields` lists them: the record's own id,
@@ -379,8 +357,7 @@ class Listing(Command):
             return False
         kind = self.fields[name]
         if kind == "id":
-            # ids are only ever shown shortened, so a prefix is what there is to paste back
-            return str(held).startswith(value.lstrip("#").lower())
+            return str(held) == value.lstrip("#").lower()
         if kind == "path":
             if str(held) == value:
                 return True

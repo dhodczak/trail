@@ -60,9 +60,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if console.restarting:
         relaunch()
     if trail.dir is None:
-        print(f"trail #{trail.id[:8]}: {len(trail.events)} events, not recorded")
+        print(f"trail #{trail.id}: {len(trail.events)} events, not recorded")
     else:
-        print(f"trail #{trail.id[:8]}: {len(trail.events)} events in {trail.dir}")
+        print(f"trail #{trail.id}: {len(trail.events)} events in {trail.dir}")
     return 0
 
 

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from trail.entry import Entry
 from trail.node import Node
+from trail.select import Select
 from trail.util import ByPos, asset_repr, items_repr, mtime_repr, normalize_id, st_size_repr
 
 if TYPE_CHECKING:
@@ -292,6 +293,10 @@ class JSONL(Node):
     @property
     def path(self) -> Path | None:
         trail = self._trail
+        # only the trail's own log is kept on disk; a selection out of it stands alone, so that
+        # changing one cannot rewrite the log with only what was selected
+        if self._parent is not trail.events:
+            return None
         if trail.dir:
             return trail.dir / "events.jsonl"
         else:
@@ -493,6 +498,20 @@ class Events(
     def by_pos(self) -> ByPos[Event]:
         """Allows for Events to be indexed by integer position, rather than ID or path."""
         return ByPos(self)
+
+    @cached_property
+    def select(self) -> Select[Events]:
+        # a bare value is tried as the event's own id, then its resource's, then as a path
+        return Select(
+            self,
+            fields={
+                "id": "id",
+                "entry": "id",
+                "src_path": "path",
+                "dest_path": "path",
+                "event_type": "text",
+            },
+        )
 
     def update(
             self,

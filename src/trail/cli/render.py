@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 class Renderer(Node):
     """
     Turns the Trail's objects into feed rows. The wording it picks for an event, such as the
-    verb and the shortened resource id, is presentation only. It is kept here so that the
-    widgets do not own it and a later provenance export can word the same things its own way.
+    verb, is presentation only. It is kept here so that the widgets do not own it and a later
+    provenance export can word the same things its own way.
     It holds no state; the feed tracks its own date.
     """
 
@@ -124,7 +124,7 @@ class Renderer(Node):
             state = "idle"
         row: StyleAndTextTuples = [
             ("class:header.name", " trail "),
-            ("class:header.id", f"#{trail.id[:8]}  "),
+            ("class:header.id", f"#{trail.id}  "),
             ("", self.home(self.root)),
         ]
         if trail.dir is None:

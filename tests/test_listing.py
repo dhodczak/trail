@@ -93,8 +93,6 @@ class TestListing:
             assert self.positions(self.run(console, f"events {event.id}")) == [1]
             assert self.positions(self.run(console, f"events {entry.id}")) == [2]
             assert self.positions(self.run(console, f"events {console.root / 'a.csv'}")) == [0]
-            # an id is only ever shown shortened, so a prefix has to answer too
-            assert self.positions(self.run(console, f"events {entry.id[:8]}")) == [2]
 
     def test_assets_and_dirs_list_their_own_collections(self) -> None:
         with self.session() as console:

@@ -260,7 +260,7 @@ class Console(Node):
     def _banner(self) -> None:
         trail = self._trail
         renderer = self.renderer
-        self.feed.info(f"trail #{trail.id[:8]} on {renderer.home(self.root)}")
+        self.feed.info(f"trail #{trail.id} on {renderer.home(self.root)}")
         if trail.dir is None:
             self.feed.info("nodir: events are held in memory and discarded on exit")
         else:

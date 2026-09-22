@@ -213,7 +213,7 @@ class ByPos[T](Node):
                 collection[identifier]
                 for identifier in collection.ids[item]
             ]
-            name = getattr(collection, '_repr_name', type(collection).__name__)
+            name = type(collection).__name__
             return Listing(selected, name=name)
         identifier = collection.ids[item]
         return collection[identifier]

@@ -525,13 +525,54 @@ class TestTrail:
             assert readded.id != first.id
             assert files[:] == [second, readded]
             assert trail.assets.ids == [second.id, readded.id]
-            assert entries[:] == [second, readded, tracked_directory]
+            # the kinds are interleaved in the order they were tracked, not grouped by kind
+            assert entries[:] == [second, tracked_directory, readded]
+            assert trail.entries.ids == [second.id, tracked_directory.id, readded.id]
             trail.offtrail(other_csv, csv, directory)
             assert files[:] == []
             assert directories[:] == []
             assert entries[:] == []
             assert trail.assets.ids == []
             assert trail.dirs.ids == []
+
+    def test_entries_follow_a_move_in_place(self) -> None:
+        with self.workspace() as root:
+            csv = root / 'dataset.csv'
+            folder = root / 'folder'
+            inner = folder / 'inner.csv'
+            folder.mkdir()
+            inner.write_text('name,value\ninner,1\n', encoding='utf-8')
+            trail = Trail()
+            # the whole makes each entry the kind its path is on disk
+            tracked = trail.entries.entry(folder, inner, csv)
+            assert tracked == (trail.dirs[folder], trail.assets[inner], trail.assets[csv])
+
+            renamed = root / 'renamed'
+            folder.rename(renamed)
+            tracked[0].move(renamed)
+
+            assert trail.entries.by_pos[:] == list(tracked)
+            assert trail.entries[renamed] is tracked[0]
+            assert trail.entries[renamed / 'inner.csv'] is tracked[1]
+            assert trail.assets[renamed / 'inner.csv'] is tracked[1]
+            assert folder not in trail.entries
+            assert inner not in trail.entries
+            assert inner not in trail.assets
+
+    def test_a_path_holds_one_entry_whichever_its_kind(self) -> None:
+        with self.workspace() as root:
+            path = root / 'subdirectory'
+            path.mkdir()
+            trail = Trail()
+            directory = trail.track(path)
+            path.rmdir()
+            path.write_text('name,value\nnow,1\n', encoding='utf-8')
+            asset = trail.assets.entry(path)[0]
+
+            assert trail.entries[path] is asset
+            assert trail.entries.by_pos[:] == [asset]
+            assert trail.dirs.by_pos[:] == []
+            assert trail.entries.get(directory.id) is None
 
     def test_discovered_entries_survive_reload(self) -> None:
         async def run() -> None:
@@ -821,6 +862,14 @@ if __name__ == "__main__":
         (
             'test_entry_positions_follow_tracking_changes',
             'entry positions follow tracking changes',
+        ),
+        (
+            'test_entries_follow_a_move_in_place',
+            'entries follow a move without losing their places',
+        ),
+        (
+            'test_a_path_holds_one_entry_whichever_its_kind',
+            'a path holds one entry whichever its kind',
         ),
         (
             'test_discovered_entries_survive_reload',

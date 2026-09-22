@@ -70,14 +70,16 @@ class Dir(Entry):
             self.path = previous_path
             raise
 
+        entries = trail.entries
         previous = collection.id2entry.get(self.id)
-        occupant = collection.path2entry.get(path)
+        # a path holds one entry whichever its kind
+        occupant = entries.path2entry.get(path)
         for old in (previous, occupant):
             if (
                 old is None
                 or old is self
                 # entries contains fresh entry
-                or collection.id2entry.get(old.id) is not old
+                or entries.id2entry.get(old.id) is not old
             ):
                 continue
             if old.id == self.id:
@@ -87,10 +89,7 @@ class Dir(Entry):
                 Entry.offtrail(old)
             else:
                 old.offtrail()
-        collection.path2entry[path] = self
-        if self.id not in collection.id2entry:
-            collection.ids.append(self.id)
-        collection.id2entry[self.id] = self
+        collection[self.id] = self
         return self
 
     def move(self, destination: PathLike) -> Self:
@@ -99,8 +98,7 @@ class Dir(Entry):
         trail = self._trail
         descendants = (
             entry
-            for collection in (trail.assets, trail.dirs)
-            for entry in tuple(collection.id2entry.values())
+            for entry in tuple(trail.entries.id2entry.values())
             if entry is not self and entry.path.is_relative_to(previous_path)
         )
         for entry in descendants:
