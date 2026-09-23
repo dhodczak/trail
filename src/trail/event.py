@@ -71,7 +71,7 @@ class Event:
                 value = mtime_repr(value)
             yield event_field.name, value
 
-    @cached_property
+    @property
     def get(self) -> Self | Get:
         return Get(self)
 

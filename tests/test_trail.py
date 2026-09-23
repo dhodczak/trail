@@ -30,19 +30,18 @@ class TestTrail:
 
     @staticmethod
     def opened_event(
-        trail: Trail,
-        csv: Path,
-        previous: int,
+            trail: Trail,
+            csv: Path,
+            previous: int,
     ) -> WatchdogEvent | None:
-        opened = trail.events.select(f"""
-            {previous}:
-            cls=WatchdogEvent
-            event_type=opened
-            src_path='{csv}'
-        """)
         # the callers poll until this is not None
-        return next(iter(opened), None)
-
+        return next((
+            event
+            for event in trail.events.select[previous:]
+            if isinstance(event, WatchdogEvent)
+               and event.get.event_type == "opened"
+               and event.get.src_path == str(csv)
+        ), None)
 
     def test_pathless_track_and_open(self) -> None:
         async def run() -> None:
@@ -59,7 +58,7 @@ class TestTrail:
                     assert stream.read() == "name,value\nexample,42\n"
                 async with asyncio.timeout(5):
                     while (
-                        opened := self.opened_event(trail, csv, previous)
+                            opened := self.opened_event(trail, csv, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
@@ -108,7 +107,7 @@ class TestTrail:
                     assert stream.read() == 'name,value\nexample,42\n'
                 async with asyncio.timeout(5):
                     while (
-                        opened := self.opened_event(trail, csv, previous)
+                            opened := self.opened_event(trail, csv, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
@@ -134,7 +133,7 @@ class TestTrail:
                         assert stream.read() == 'name,value\nexample,42\n'
                     async with asyncio.timeout(5):
                         while (
-                            opened := self.opened_event(trail, csv, previous)
+                                opened := self.opened_event(trail, csv, previous)
                         ) is None:
                             await asyncio.sleep(0.01)
 
@@ -187,7 +186,7 @@ class TestTrail:
                     assert stream.read() == "name,value\nexample,42\n"
                 async with asyncio.timeout(5):
                     while (
-                        opened := self.opened_event(trail, csv, previous)
+                            opened := self.opened_event(trail, csv, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 # quiet this trail so the reloaded ones are the only writers
@@ -229,9 +228,9 @@ class TestTrail:
                 restored = Trail(root)
                 assert restored.id == trail.id
                 assert [
-                    event.to_record()
-                    for event in restored.events
-                ] == records
+                           event.to_record()
+                           for event in restored.events
+                       ] == records
                 restored_entry = restored.entries[csv]
                 assert restored_entry.id == entry.id
                 assert all(
@@ -243,7 +242,7 @@ class TestTrail:
                     assert stream.read() == "name,value\nexample,42\n"
                 async with asyncio.timeout(5):
                     while (
-                        reopened := self.opened_event(restored, csv, previous)
+                            reopened := self.opened_event(restored, csv, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 await restored.watchdog.stop()
@@ -283,7 +282,7 @@ class TestTrail:
                     assert stream.read() == 'name,value\nother,7\n'
                 async with asyncio.timeout(5):
                     while (
-                        opened := self.opened_event(restored, other_csv, previous)
+                            opened := self.opened_event(restored, other_csv, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 await restored.watchdog.stop()
@@ -345,9 +344,9 @@ class TestTrail:
                 restored = Trail(root)
                 assert restored.entries[csv].id == entry.id
                 assert [
-                    event.to_record()
-                    for event in restored.events
-                ] == records
+                           event.to_record()
+                           for event in restored.events
+                       ] == records
                 await restored.watchdog.stop()
 
         asyncio.run(run())
@@ -457,18 +456,18 @@ class TestTrail:
                 csv.write_text('name,value\nexample,43\n', encoding='utf-8')
                 async with asyncio.timeout(5):
                     while not any(
-                        event.event_type == 'modified'
-                        and event.src_path == str(csv)
-                        for event in trail.events.select[previous:]
+                            event.event_type == 'modified'
+                            and event.src_path == str(csv)
+                            for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 previous = len(trail.events)
                 csv.unlink()
                 async with asyncio.timeout(5):
                     while not any(
-                        event.event_type == 'deleted'
-                        and event.src_path == str(csv)
-                        for event in trail.events.select[previous:]
+                            event.event_type == 'deleted'
+                            and event.src_path == str(csv)
+                            for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
@@ -485,9 +484,9 @@ class TestTrail:
                 assert restored.events.select[0].id == expected_ids[0]
                 assert restored.events.select[-1].id == expected_ids[-1]
                 assert [
-                    event.id
-                    for event in restored.events.select[::-1]
-                ] == expected_ids[::-1]
+                           event.id
+                           for event in restored.events.select[::-1]
+                       ] == expected_ids[::-1]
                 assert restored.entries[csv].id == entry.id
                 restored.events.jsonl.read()
                 assert restored.events.ids == expected_ids
@@ -589,8 +588,8 @@ class TestTrail:
                 directory.mkdir()
                 async with asyncio.timeout(5):
                     while (
-                        csv not in trail.assets
-                        or directory not in trail.dirs
+                            csv not in trail.assets
+                            or directory not in trail.dirs
                     ):
                         await asyncio.sleep(0.01)
                 # the removals below must not be recorded
@@ -709,7 +708,7 @@ class TestTrail:
                     assert stream.read() == 'name,value\nnew,1\n'
                 async with asyncio.timeout(5):
                     while (
-                        opened := self.opened_event(trail, new_file, previous)
+                            opened := self.opened_event(trail, new_file, previous)
                     ) is None:
                         await asyncio.sleep(0.01)
                 assert opened.entry is new_file_entry
@@ -736,7 +735,6 @@ class TestTrail:
 
         asyncio.run(run())
 
-
     def test_renamed_file_keeps_its_resource_id(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
@@ -749,9 +747,9 @@ class TestTrail:
                 csv.rename(renamed)
                 async with asyncio.timeout(5):
                     while not any(
-                        event.event_type == 'moved'
-                        and event.dest_path == str(renamed)
-                        for event in trail.events.select[previous:]
+                            event.event_type == 'moved'
+                            and event.dest_path == str(renamed)
+                            for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
