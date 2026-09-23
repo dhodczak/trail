@@ -84,15 +84,17 @@ class TestListing:
             relative = self.run(console, "events src_path=b.csv")
             assert self.positions(absolute) == self.positions(relative) == [1]
 
-    def test_a_bare_value_tries_the_fields_in_turn(self) -> None:
+    def test_every_term_names_its_field(self) -> None:
         with self.session() as console:
             trail = console._trail
             event = trail.events.select[1]
             entry = trail.assets[console.root / "c.csv"]
-            # the record's own id, then the resource's, then a path, each found without being named
-            assert self.positions(self.run(console, f"events {event.id}")) == [1]
-            assert self.positions(self.run(console, f"events {entry.id}")) == [2]
-            assert self.positions(self.run(console, f"events {console.root / 'a.csv'}")) == [0]
+            assert self.positions(self.run(console, f"events id={event.id}")) == [1]
+            assert self.positions(self.run(console, f"events entry={entry.id}")) == [2]
+            # a bare value is not guessed at, and the refusal says how to name it
+            written = self.run(console, f"events {event.id}")
+            assert "not a comparison" in written
+            assert f"id={event.id}" in written
 
     def test_assets_and_dirs_list_their_own_collections(self) -> None:
         with self.session() as console:
@@ -103,45 +105,73 @@ class TestListing:
             assert "Asset" in written
             assert "Dir" in self.run(console, "dirs")
             # a directory is not an asset, so the one collection does not answer for the other
-            assert "no record holds" in self.run(console, f"assets {console.root / 'folder'}")
-            assert self.positions(self.run(console, f"dirs {console.root / 'folder'}")) == [0]
+            assert "nothing matched" in self.run(console, "assets path=folder")
+            assert self.positions(self.run(console, "dirs path=folder")) == [0]
 
-    def test_values_for_the_one_field_read_as_alternatives(self) -> None:
+    def test_or_takes_either_side(self) -> None:
         with self.session() as console:
-            assert self.positions(self.run(console, "assets a.csv b.csv")) == [0, 1]
-            # named outright, the one field twice over reads the same way
-            written = self.run(console, "assets path=a.csv path=b.csv")
-            assert self.positions(written) == [0, 1]
+            assert self.positions(self.run(console, "assets path=a.csv or path=b.csv")) == [0, 1]
+            # side by side, the one field twice has to hold both, which no record does
+            assert "nothing matched" in self.run(console, "assets path=a.csv path=b.csv")
 
-    def test_values_for_different_fields_all_have_to_hold(self) -> None:
+    def test_terms_side_by_side_all_have_to_hold(self) -> None:
         with self.session() as console:
             assert self.positions(self.run(console, "assets path=a.csv name=a.csv")) == [0]
+            assert self.positions(self.run(console, "assets path=a.csv and name=a.csv")) == [0]
             # the one record cannot hold both, so pairing them keeps nothing
             assert "nothing matched" in self.run(console, "assets path=a.csv name=b.csv")
 
-    def test_a_slice_cuts_what_the_values_left(self) -> None:
+    def test_a_slice_cuts_what_the_terms_before_it_left(self) -> None:
         with self.session() as console:
             # three records name a.csv, once it has been let go of and taken back
             self.run(console, "untrack a.csv")
             self.run(console, "track a.csv")
-            assert self.positions(self.run(console, "events a.csv")) == [0, 4, 5]
-            assert self.positions(self.run(console, "events a.csv -2:")) == [4, 5]
-            assert self.positions(self.run(console, "events a.csv 1")) == [5]
+            assert self.positions(self.run(console, "events src_path=a.csv")) == [0, 4, 5]
+            assert self.positions(self.run(console, "events src_path=a.csv -2:")) == [4, 5]
+            assert self.positions(self.run(console, "events -5: src_path=b.csv")) == [1]
+            assert "nothing matched" in self.run(console, "events -4: src_path=b.csv")
             # the position stays the one the collection addresses, not the one among the results
-            assert self.positions(self.run(console, "events a.csv b.csv -3:")) == [1, 4, 5]
+            grouped = self.run(console, "events (src_path=a.csv or src_path=b.csv) -3:")
+            assert self.positions(grouped) == [1, 4, 5]
+            # ungrouped, the slice binds to the side of the `or` it was written on
+            ungrouped = self.run(console, "events src_path=b.csv or src_path=a.csv -1:")
+            assert self.positions(ungrouped) == [1, 5]
 
     def test_slices_cut_in_the_order_they_were_written(self) -> None:
         with self.session() as console:
             assert self.positions(self.run(console, "events :3 1:")) == [1, 2]
             assert self.positions(self.run(console, "events 1: :1")) == [1]
 
-    def test_a_field_that_does_not_exist_is_named_back(self) -> None:
+    def test_quotes_and_parentheses_reach_select_as_typed(self) -> None:
         with self.session() as console:
-            written = self.run(console, "events bogus=1")
-            assert "no field 'bogus'" in written
-            assert "src_path" in written
+            (console.root / "d (e).csv").write_text("d\n", encoding="utf-8")
+            self.run(console, "track 'd (e).csv'")
+            assert self.positions(self.run(console, "events src_path='d (e).csv'")) == [4]
+            assert self.positions(self.run(console, 'events "src_path=d (e).csv"')) == [4]
+            assert self.positions(self.run(console, "events (src_path='d (e).csv')")) == [4]
+            either = self.run(console, "events (src_path='d (e).csv' or src_path=a.csv)")
+            assert self.positions(either) == [0, 4]
+
+    def test_without_a_slice_only_the_default_is_shown(self) -> None:
+        with self.session() as console:
+            console.commands["events"].default = 2
+            written = self.run(console, "events")
+            assert "events (2 of 4)" in written
+            assert self.positions(written) == [2, 3]
+            assert self.positions(self.run(console, "events not src_path=a.csv")) == [2, 3]
+            # any slice says how many, so the default steps aside
+            assert self.positions(self.run(console, "events :3")) == [0, 1, 2]
+
+    def test_a_malformed_expression_is_reported_rather_than_raised(self) -> None:
+        with self.session() as console:
+            assert "events: 'nowhere' is not a comparison" in self.run(console, "events nowhere")
+            assert "events: unclosed '('" in self.run(console, "events (src_path=a.csv")
+            assert "only by = and !=" in self.run(console, "events cls<Event")
+            assert "No closing quotation" in self.run(console, "events src_path='a.csv")
+            assert "unbalanced quotes" in self.run(console, "track 'a.csv")
+            # a field no record holds is held by none of them, rather than refused
+            assert "nothing matched" in self.run(console, "events bogus=1")
             assert "nothing matched" in self.run(console, "events event_type=created")
-            assert "no record holds" in self.run(console, "events nowhere")
 
     def test_the_key_empties_the_rows_but_not_the_tracking(self) -> None:
         """Emptying the terminal is ctrl-l's, now that `clear` discards the record instead."""
@@ -242,32 +272,40 @@ if __name__ == "__main__":
             "a path filter takes either way of writing it",
         ),
         (
-            "test_a_bare_value_tries_the_fields_in_turn",
-            "a bare value tries the fields in turn",
+            "test_every_term_names_its_field",
+            "every term names its field",
         ),
         (
             "test_assets_and_dirs_list_their_own_collections",
             "assets and dirs list their own collections",
         ),
         (
-            "test_values_for_the_one_field_read_as_alternatives",
-            "values for the one field read as alternatives",
+            "test_or_takes_either_side",
+            "or takes either side",
         ),
         (
-            "test_values_for_different_fields_all_have_to_hold",
-            "values for different fields all have to hold",
+            "test_terms_side_by_side_all_have_to_hold",
+            "terms side by side all have to hold",
         ),
         (
-            "test_a_slice_cuts_what_the_values_left",
-            "a slice cuts what the values left",
+            "test_a_slice_cuts_what_the_terms_before_it_left",
+            "a slice cuts what the terms before it left",
         ),
         (
             "test_slices_cut_in_the_order_they_were_written",
             "slices cut in the order they were written",
         ),
         (
-            "test_a_field_that_does_not_exist_is_named_back",
-            "a field that does not exist is named back",
+            "test_quotes_and_parentheses_reach_select_as_typed",
+            "quotes and parentheses reach select as typed",
+        ),
+        (
+            "test_without_a_slice_only_the_default_is_shown",
+            "without a slice only the default is shown",
+        ),
+        (
+            "test_a_malformed_expression_is_reported_rather_than_raised",
+            "a malformed expression is reported rather than raised",
         ),
         (
             "test_the_key_empties_the_rows_but_not_the_tracking",

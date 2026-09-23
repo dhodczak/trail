@@ -10,7 +10,7 @@ from datetime import UTC, datetime, time
 from functools import cached_property
 from operator import ge, gt, le, lt
 from pathlib import Path
-from typing import Any, Final, Protocol, overload
+from typing import Any, Final, Protocol, Self, overload
 
 from trail.node import Node
 
@@ -93,20 +93,8 @@ class Select[T: Collection[Any], V](Node):
         return collection.data[identifier]
 
     def split(self, item: str) -> T:
-        """
-        Splits the input string into individual items, handling quotes and spaces.
-        It then calls each substring as a chain.
-        """
-        lexer = shlex.shlex(item, posix=True, punctuation_chars='()')
-        lexer.whitespace_split = True
-        lexer.commenters = ''
-        pending: deque[str] = deque()
-        for token in lexer:
-            # a run of parentheses is lexed as one token
-            if set(token) <= PARENTHESES:
-                pending.extend(token)
-            else:
-                pending.append(token)
+        """Splits the input string into its terms, then calls them as a chain."""
+        pending = self.lex(item)
         if not pending:
             return self[:]
         out = self.disjunction(pending)
@@ -130,9 +118,13 @@ class Select[T: Collection[Any], V](Node):
         while self.peek(pending) not in (None, 'or', ')'):
             if self.peek(pending) == 'and':
                 pending.popleft()
-            select = type(self)(out)
+            select = self.within(out)
             out = select.term(pending)
         return out
+
+    def within(self, collection: T) -> Self:
+        # the select a later term reads with; a subclass holding state of its own passes it on
+        return type(self)(collection)
 
     def term(self, pending: deque[str]) -> T:
         if not pending:
@@ -306,6 +298,21 @@ class Select[T: Collection[Any], V](Node):
         if isinstance(held, int | float):
             return float(value)
         return value
+
+    @staticmethod
+    def lex(item: str) -> deque[str]:
+        """Splits an expression the way a shell splits a line, every parenthesis a term alone."""
+        lexer = shlex.shlex(item, posix=True, punctuation_chars='()')
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        out: deque[str] = deque()
+        for token in lexer:
+            # a run of parentheses is lexed as one token
+            if set(token) <= PARENTHESES:
+                out.extend(token)
+            else:
+                out.append(token)
+        return out
 
     @staticmethod
     def peek(pending: deque[str]) -> str | None:

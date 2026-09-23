@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-import re
+import shlex
 from collections.abc import Iterator, Sequence
 from fnmatch import fnmatch
 from glob import iglob
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 
 from trail.cli.node import Node
 from trail.dir import Dir
-from trail.util import Repr
+from trail.select import SLICE, Collection, Select
 
 if TYPE_CHECKING:
     from trail.cli.commands import Commands
     from trail.cli.console import Console
-    from trail.entry import Entry
+    from trail.entry import Entries, Entry
+    from trail.event import Events
 
 # the characters that make a command argument a pattern rather than a path
 MAGIC = ("*", "?", "[")
 # what confirms an action that discards the record rather than adding to it
 FORCE = ("-f", "--force")
-# the action that empties a listing; it has to be spelled in full, since a bare value is
-# read as something to search for
+# the action that empties a listing in place of listing it, when it is the first word
 CLEAR = "clear"
 
 
@@ -52,6 +52,16 @@ class Command(Node):
 
     def __call__(self, arguments: Sequence[str]) -> None:
         raise NotImplementedError
+
+    def submit(self, text: str) -> None:
+        # what followed the command's name; a command that reads it as an expression of its own
+        # overrides this to take it unsplit
+        try:
+            arguments = shlex.split(text)
+        except ValueError as error:
+            self._feed.error(f"unbalanced quotes: {error}")
+            return
+        self(arguments)
 
     def complete(
         self,
@@ -165,51 +175,58 @@ class Command(Node):
         return path.resolve()
 
 
-SLICE = re.compile(r"(-?\d+)?:(-?\d+)?")
-COUNT = re.compile(r"\d+")
+class Query[T: Collection[Any], V](Select[T, V]):
+    _parent: T
+
+    def __init__(
+        self,
+        parent: T,
+        root: Path,
+    ) -> None:
+        Select.__init__(self, parent)
+        self.root = root
+
+    def within(self, collection: T) -> Self:
+        return type(self)(collection, self.root)
+
+    def comparison(self, item: str) -> T:
+        match = self.parse(item)
+        field = match["field"]
+        value = match["value"]
+        if (
+            not field.endswith("path")
+            or not value
+        ):
+            return super().comparison(item)
+        # read against the project root, the way the console words a path, rather than against
+        # the working directory; resolved once here rather than once for every record
+        path = self.root / Path(value).expanduser()
+        return self.where(field, match["operator"], str(path.resolve()))
 
 
 class Listing(Command):
     """
     A command that lists one of the Trail's collections, printing each record the way the feed
-    prints an event. A subclass only says what it lists and which fields may be filtered on; the
-    grammar and the output are shared, so a new listing is mostly a declaration:
+    prints an event. A subclass only says what it lists; what follows the command's name is read
+    by the collection's Select, so a listing takes whatever `events.select(...)` takes:
 
-        events                        the last `default` records
-        events :5    -5:    2:7       a slice, counted the way Python counts
-        events entry='c9f380c2737c467fa0aad96d70340999'
-                                      only records whose `entry` holds that value
-        events 'c9f380c2737c467fa0aad96d70340999'
-                                      no field named, so the fields are tried in turn
+        events                                    the last `default` records
+        events :5    -5:    2:7                   a slice, counted the way Python counts
+        events src_path=a.csv -5:                 the last five of that file's records
+        events src_path=a.csv or src_path=b.csv   either file's records
+        events cls=WatchdogEvent not event_type=opened
 
-    The last form is there so that anything copied out of a printed block can be pasted
-    straight back. The fields are tried in the order `fields` lists them: the record's own id,
-    then the id of the resource it was recorded against, then the paths.
-
-    Arguments combine like this. Two values for one field mean either of them, values for
-    different fields all have to hold, and any slices cut what is left, in the order written:
-
-        assets path/to/asset -5:      the last five records for that path
-        events a.csv b.csv            either file's records
-        events created a.csv -2:      both fields hold, then the last two
+    A path is read against the project root, the way a listing words it, so a value copied out
+    of a printed record can be pasted straight back. When no slice says how many, only the last
+    `default` of what matched are shown.
     """
 
-    # the fields `field=value` may name, each with the kind of match it takes, in the order a
-    # bare value is tried against them
-    fields: ClassVar[dict[str, str]] = {}
-    # records shown when the arguments do not say how many
+    # the fields offered as completions; a record can be selected on any other it holds
+    fields: ClassVar[tuple[str, ...]] = ()
+    # records shown when the expression does not say how many
     default = 20
 
-    def items(self) -> Sequence[Repr]:
-        """The collection this command lists, in the order it is held."""
-        raise NotImplementedError
-
-    def held(self, item: Repr, name: str) -> object | None:
-        """What `item` keeps in the named field, or None when it keeps nothing there."""
-        return getattr(item, name, None)
-
-    def clear(self) -> None:
-        """Empties the collection this command lists."""
+    def collection(self) -> Entries | Events:
         raise NotImplementedError
 
     def complete(
@@ -222,160 +239,68 @@ class Listing(Command):
             return
         tokens = document.text_before_cursor.split()
         first = len(tokens) <= 1 or (len(tokens) == 2 and word)
-        # offered only where it is the action, and not where it would be a value to match
+        # offered only where it is the action, and not where it would be a term
         if first and CLEAR.startswith(word):
             yield Completion(CLEAR, start_position=-len(word))
+        # a term that opens a group is completed past its parentheses
+        stem = word.lstrip("(")
         for name in self.fields:
-            if name.startswith(word):
-                yield Completion(f"{name}=", start_position=-len(word))
+            if name.startswith(stem):
+                yield Completion(f"{name}=", start_position=-len(stem))
 
-    def __call__(self, arguments: Sequence[str]) -> None:
-        if arguments and arguments[0] == CLEAR:
-            self.discard(arguments[1:])
+    def submit(self, text: str) -> None:
+        # taken unsplit, since once the console's split has dropped the quotes, the parentheses
+        # of a quoted path can no longer be told from the ones grouping terms
+        words = text.split()
+        if (
+            words
+            and words[0] == CLEAR
+        ):
+            self.discard(words[1:])
             return
-        items = list(self.items())
-        selected = self.select(items, arguments)
-        if selected is None:
+        collection = self.collection()
+        query = Query(collection, self._console.root)
+        try:
+            selection = query(text)
+        except (TypeError, ValueError) as error:
+            self._feed.error(f"{self.name}: {error}")
             return
-        if not selected:
+        sliced = any(
+            SLICE.fullmatch(token)
+            for token in Select.lex(text)
+        )
+        if not sliced:
+            selection = selection.select[-self.default:]
+        if not selection:
             self._feed.info(f"{self.name}: nothing matched")
             return
-        self._feed.info(f"{self.name} ({len(selected)} of {len(items)})")
+        self._feed.info(f"{self.name} ({len(selection)} of {len(collection)})")
+        # the position the whole collection gives a record rather than its place among what
+        # matched, since that is the number it is addressed by
+        positions = {
+            key: position
+            for position, key in enumerate(collection.ids)
+        }
         renderer = self._renderer
-        for position, item in selected:
-            self._feed.extend(renderer.record(item, position))
+        for key in selection.ids:
+            rows = renderer.record(selection.data[key], positions[key])
+            self._feed.extend(rows)
 
     def discard(self, arguments: Sequence[str]) -> None:
         """
         `clear` on a listing. The count is taken first, because afterwards there is nothing
         left to count.
         """
-        total = len(self.items())
+        collection = self.collection()
+        total = len(collection)
         if not total:
             self._feed.info(f"{self.name}: already empty")
             return
         subject = f"{self.name}: this clears {total}"
         if not self.confirmed(arguments, f"{self.name} {CLEAR}", subject):
             return
-        self.clear()
+        collection.clear()
         self._feed.info(f"{self.name}: cleared {total}")
-
-    def select(
-        self,
-        items: Sequence[Repr],
-        arguments: Sequence[str],
-    ) -> list[tuple[int, Repr]] | None:
-        """
-        The records the arguments pick out, each paired with its position in the whole
-        collection. That position is the collection's own rather than the result's, so a
-        filtered record still prints the number used to address it.
-
-        Values are grouped by the field they name before any filtering runs. That is what lets
-        two values for one field mean either of them: the second is matched against everything
-        the first would have discarded.
-        """
-        pairs = list(enumerate(items))
-        wanted: dict[str, list[str]] = {}
-        cuts: list[slice] = []
-        for token in arguments:
-            bounds = self.cut(token)
-            if bounds is not None:
-                cuts.append(bounds)
-                continue
-            named = self.named(token, pairs)
-            if named is None:
-                return None
-            name, value = named
-            wanted.setdefault(name, []).append(value)
-        pairs = self.narrow(pairs, wanted)
-        if not cuts:
-            cuts = [slice(-self.default, None)]
-        for bounds in cuts:
-            pairs = pairs[bounds]
-        return pairs
-
-    def cut(self, token: str) -> slice | None:
-        """The slice a token asks for, or None when it is not asking for one."""
-        if SLICE.fullmatch(token):
-            return self.bounds(token)
-        if COUNT.fullmatch(token):
-            return slice(-int(token), None)
-        return None
-
-    def named(
-        self,
-        token: str,
-        pairs: list[tuple[int, Repr]],
-    ) -> tuple[str, str] | None:
-        """
-        The field a token filters on and the value it filters by. A bare value names no field,
-        so the fields are tried in order and the first one that matches any record wins.
-        """
-        divider = token.find("=")
-        if divider > 0:
-            name = token[:divider]
-            if name not in self.fields:
-                fields = ", ".join(self.fields)
-                self._feed.error(f"{self.name}: no field {name!r}; it has {fields}")
-                return None
-            return name, token[divider + 1:]
-        for name in self.fields:
-            held = any(
-                self.matches(item, name, token)
-                for _, item in pairs
-            )
-            if held:
-                return name, token
-        self._feed.error(f"{self.name}: no record holds {token!r}")
-        return None
-
-    def narrow(
-        self,
-        pairs: list[tuple[int, Repr]],
-        wanted: dict[str, list[str]],
-    ) -> list[tuple[int, Repr]]:
-        """A record is kept only if every named field holds one of the values given for it."""
-        for name, values in wanted.items():
-            pairs = [
-                (position, item)
-                for position, item in pairs
-                if any(
-                    self.matches(item, name, value)
-                    for value in values
-                )
-            ]
-        return pairs
-
-    def matches(
-        self,
-        item: Repr,
-        name: str,
-        value: str,
-    ) -> bool:
-        held = self.held(item, name)
-        if held is None or not value:
-            return False
-        kind = self.fields[name]
-        if kind == "id":
-            return str(held) == value.lstrip("#").lower()
-        if kind == "path":
-            if str(held) == value:
-                return True
-            return Path(held) == self.absolute(Path(value).expanduser())
-        return str(held) == value
-
-    @staticmethod
-    def bounds(token: str) -> slice:
-        parts = token.split(":")
-        if parts[0]:
-            first = int(parts[0])
-        else:
-            first = None
-        if parts[1]:
-            last = int(parts[1])
-        else:
-            last = None
-        return slice(first, last)
 
 
 class CommandCompleter(Completer):

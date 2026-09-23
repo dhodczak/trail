@@ -10,10 +10,10 @@ from prompt_toolkit.document import Document
 from trail.cli.command import FORCE, Command, Listing
 from trail.cli.node import Node
 from trail.entry import Entries
-from trail.util import Repr
 
 if TYPE_CHECKING:
     from trail.cli.console import Console
+    from trail.event import Events
 
 KEYS: Final[tuple[tuple[str, str], ...]] = (
     ("enter", "run the command"),
@@ -28,9 +28,10 @@ NOTES: Final[tuple[str, ...]] = (
     "afterwards are picked up automatically, files already inside it are not",
     "the feed is ordinary output, so scrolling, selecting and copying are the",
     "terminal's own and work as they do anywhere else",
-    "a listing pairs its arguments: the one field twice reads as either, two fields both",
-    "have to hold, and a slice cuts what they left, so 'events a.csv b.csv -5:' is the",
-    "last five records of either file",
+    "a listing reads what follows it as a selection: every term names its field, terms",
+    "side by side all have to hold, 'or' takes either side, and a slice cuts what the terms",
+    "before it left, so 'events (src_path=a.csv or src_path=b.csv) -5:' is the last five",
+    "records of either file",
     "every listing takes 'clear': 'assets clear -f' offtrails what it lists and",
     "records the removals, while 'events clear -f' discards the log those were kept in",
     "'clear -f' on its own does both, and ctrl-l empties the terminal instead",
@@ -107,35 +108,22 @@ class UntrackCommand(Command):
 
 class AssetsCommand(Listing):
     name = "assets"
-    usage = "assets [SLICE] [FIELD=VALUE]"
+    usage = "assets [EXPRESSION]"
     summary = "the tracked files, sliced or filtered"
-    fields: ClassVar[dict[str, str]] = {
-        "id": "id",
-        "path": "path",
-        "name": "text",
-    }
+    fields: ClassVar[tuple[str, ...]] = (
+        "id",
+        "path",
+        "name",
+        "cls",
+    )
 
     def collection(self) -> Entries:
         return self._trail.assets
 
-    def items(self) -> Sequence[Repr]:
-        collection = self.collection()
-        return [
-            collection[identifier]
-            for identifier in collection.ids
-        ]
-
-    def clear(self) -> None:
-        """
-        Offtrail everything listed. The removals are recorded like any other event, so what was
-        cleared stays cleared instead of coming back with the next replay of the log.
-        """
-        self.collection().clear()
-
 
 class DirsCommand(AssetsCommand):
     name = "dirs"
-    usage = "dirs [SLICE] [FIELD=VALUE]"
+    usage = "dirs [EXPRESSION]"
     summary = "the tracked directories, sliced or filtered"
 
     def collection(self) -> Entries:
@@ -144,7 +132,7 @@ class DirsCommand(AssetsCommand):
 
 class EntriesCommand(AssetsCommand):
     name = "entries"
-    usage = "entries [SLICE] [FIELD=VALUE]"
+    usage = "entries [EXPRESSION]"
     summary = "everything tracked, files and directories alike"
 
     def collection(self) -> Entries:
@@ -152,42 +140,27 @@ class EntriesCommand(AssetsCommand):
 
 
 class EventsCommand(Listing):
+    """
+    `events clear` discards the log. What is tracked stays tracked for this session, but nothing
+    records it any more, so the next session opens on a project that was never told about it.
+    """
+
     name = "events"
-    usage = "events [SLICE] [FIELD=VALUE]"
+    usage = "events [EXPRESSION]"
     summary = "the recorded events, sliced or filtered"
-    fields: ClassVar[dict[str, str]] = {
-        "id": "id",
-        "entry": "id",
-        "src_path": "path",
-        "dest_path": "path",
-        "event_type": "text",
-    }
+    fields: ClassVar[tuple[str, ...]] = (
+        "id",
+        "entry",
+        "cls",
+        "timestamp",
+        "src_path",
+        "dest_path",
+        "event_type",
+        "st_size",
+    )
 
-    def items(self) -> Sequence[Repr]:
-        events = self._trail.events
-        return [
-            events[identifier]
-            for identifier in events.ids
-        ]
-
-    def clear(self) -> None:
-        """
-        Discard the log. What is tracked stays tracked for this session, but nothing records it
-        any more, so the next session opens on a project that was never told about it.
-        """
-        self._trail.events.clear()
-
-    def held(
-        self,
-        item: Repr,
-        name: str,
-    ) -> object | None:
-        """`entry` is an object on the event rather than a value in its repr, so read its id."""
-        if name == "entry":
-            if item.entry is None:
-                return None
-            return item.entry.id
-        return getattr(item, name, None)
+    def collection(self) -> Events:
+        return self._trail.events
 
 
 class ClearCommand(Command):

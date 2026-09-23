@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import shlex
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from functools import cached_property
@@ -285,18 +284,12 @@ class Console(Node):
         if not text:
             return
         self.feed.echo(text)
-        try:
-            tokens = shlex.split(text)
-        except ValueError as error:
-            self.feed.error(f"unbalanced quotes: {error}")
-            return
-        if not tokens:
-            return
-        command = self.commands.resolve(tokens[0])
+        name = text.split(maxsplit=1)[0]
+        command = self.commands.resolve(name)
         if command is not None:
             # a REPL outlives a mistyped argument; anything raised belongs in the feed
             try:
-                command(tokens[1:])
+                command.submit(text[len(name):].lstrip())
             except Exception as error:  # noqa: BLE001
                 self.feed.error(f"{type(error).__name__}: {error}")
         self._drain()
