@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Self
 from uuid import uuid4
 
 from trail.entry import Entry
@@ -18,6 +18,23 @@ from trail.util import asset_repr, items_repr, mtime_repr, normalize_id, st_size
 
 if TYPE_CHECKING:
     from trail.trail import Trail
+
+
+class Get:
+    """
+    Allows for shorthand non-raising access.
+
+    event.src_path -> raises AttributeError
+    getattr(event, 'src_path', None) -> returns None, but verbose and string literal
+    event.get.src_path -> returns None, but concise and attribute access
+    """
+    __slots__ = ("_parent",)
+
+    def __init__(self, parent: Event) -> None:
+        self._parent = parent
+
+    def __getattr__(self, name: str) -> object | None:
+        return getattr(self._parent, name)
 
 
 @dataclass(kw_only=True, slots=True, repr=False)
@@ -36,34 +53,32 @@ class Event:
             if not event_field.repr:
                 continue
             value = getattr(self, event_field.name)
-            if event_field.name == 'timestamp':
+            if event_field.name == "timestamp":
                 now = datetime.now(value.tzinfo)
-                date_prefix = ''
+                date_prefix = ""
                 if value.year != now.year:
-                    date_prefix = value.strftime('%Y-%m-%d ')
+                    date_prefix = value.strftime("%Y-%m-%d ")
                 elif value.month != now.month:
-                    date_prefix = value.strftime('%m-%d ')
+                    date_prefix = value.strftime("%m-%d ")
                 elif value.day != now.day:
-                    date_prefix = value.strftime('%d ')
-                value = (
-                    f'{date_prefix}{value:%H:%M:%S}.'
-                    f'{value.microsecond // 1000:03d}'
-                )
-            if value is None or value == '':
+                    date_prefix = value.strftime("%d ")
+                value = f"{date_prefix}{value:%H:%M:%S}.{value.microsecond // 1000:03d}"
+            if value is None or value == "":
                 continue
             # the baseline is stored as the stat reported it; the units are put back here
-            if event_field.name == 'st_size':
+            if event_field.name == "st_size":
                 value = st_size_repr(value)
-            elif event_field.name == 'st_mtime':
+            elif event_field.name == "st_mtime":
                 value = mtime_repr(value)
             yield event_field.name, value
 
+    @cached_property
+    def get(self) -> Self | Get:
+        return Get(self)
+
     def __repr__(self) -> str:
-        attributes = ', '.join(
-            f'{name}={value}'
-            for name, value in self._repr_items()
-        )
-        return f'{type(self).__name__}({attributes})'
+        attributes = ", ".join(f"{name}={value}" for name, value in self._repr_items())
+        return f"{type(self).__name__}({attributes})"
 
     def apply(
         self,
@@ -79,9 +94,7 @@ class Event:
         cls.classes[cls.__name__] = cls
 
     @classmethod
-    def from_record(
-        cls, /, trail: Trail, resolved_entry: Entry | None = None, **record
-    ) -> Event:
+    def from_record(cls, /, trail: Trail, resolved_entry: Entry | None = None, **record) -> Event:
         name = record.pop("cls")
         event_cls = cls.classes.get(name)
 
@@ -110,9 +123,7 @@ class Event:
 
     def to_record(self) -> dict:
         out = {
-            field.name: getattr(self, field.name)
-            for field in fields(self)
-            if field.name != "entry"
+            field.name: getattr(self, field.name) for field in fields(self) if field.name != "entry"
         }
         out["cls"] = type(self).__name__
         out["timestamp"] = self.timestamp.isoformat()
@@ -226,9 +237,7 @@ class WatchdogEvent(Event):
         if self.event_type == "moved" and self.dest_path:
             destination = Path(self.dest_path).expanduser().resolve()
         for path in (source, destination):
-            if path is not None and (
-                path in trail._offtrailed_paths or trail._ignored(path)
-            ):
+            if path is not None and (path in trail._offtrailed_paths or trail._ignored(path)):
                 return None
         if self.is_directory:
             collection = trail.dirs
@@ -355,9 +364,7 @@ class JSONL(Node):
         path = self.path
         if path is None:
             return
-        text = "".join(
-            json.dumps(event.to_record(), ensure_ascii=False) + "\n" for event in events
-        )
+        text = "".join(json.dumps(event.to_record(), ensure_ascii=False) + "\n" for event in events)
         if not text:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -389,8 +396,8 @@ class Watch(Node):
             waiter.set()
 
     def __call__(
-            self,
-            timeout: float | None = None,
+        self,
+        timeout: float | None = None,
     ) -> AsyncIterator[Event]:
         """
         Yield each event appended after this call, suspending until the next one arrives rather
@@ -410,9 +417,9 @@ class Watch(Node):
         return self._iterate(len(self._parent.ids), timeout)
 
     async def _iterate(
-            self,
-            position: int,
-            timeout: float | None,
+        self,
+        position: int,
+        timeout: float | None,
     ) -> AsyncIterator[Event]:
         events = self._parent
         loop = asyncio.get_running_loop()
@@ -448,9 +455,9 @@ class Watch(Node):
     def __repr__(self) -> str:
         lines = [
             type(self).__name__,
-            f'    waiters: {len(self.waiters)!r}',
+            f"    waiters: {len(self.waiters)!r}",
         ]
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
 class Events(
@@ -499,25 +506,18 @@ class Events(
         return Select(self)
 
     def update(
-            self,
-            m: Mapping[str, Event] | Iterable[tuple[str, Event]],
-            /,
+        self,
+        m: Mapping[str, Event] | Iterable[tuple[str, Event]],
+        /,
     ) -> None:
         batch = dict(m)
         for value in batch.values():
             if not isinstance(value, Event):
                 raise TypeError(f"Expected Event, got {type(value).__name__}")
-        replacing = any(
-            key in self.data
-            for key in batch
-        )
+        replacing = any(key in self.data for key in batch)
         if not replacing:
             self.jsonl.append(batch.values())
-        appended = [
-            key
-            for key in batch
-            if key not in self.data
-        ]
+        appended = [key for key in batch if key not in self.data]
         self.ids.extend(appended)
         self.data.update(batch)
         if replacing:
