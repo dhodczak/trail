@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import ItemsView, Iterable, Iterator, ValuesView
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, fields
 from functools import cached_property
 from pathlib import Path
@@ -9,13 +9,12 @@ from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
+from trail.collection import Collection
 from trail.node import Node
-from trail.select import Select
 from trail.util import (
     MISSING,
     PathLike,
     bare_repr,
-    items_repr,
     mtime_repr,
     normalize_id,
     st_size_repr,
@@ -196,7 +195,7 @@ class Entry(Node):
         del collection[self.id]
 
 
-class Entries[E: Entry](Node):
+class Entries[E: Entry](Collection[EntryKey, E]):
     """
     A collection of Entry objects (Asset or Dir) tracked by a Trail.
 
@@ -215,28 +214,7 @@ class Entries[E: Entry](Node):
             id: '6e564e209ff44bafa32cf75d9ffcd844'
             path: '/tmp/tmpbzh09nb5/folder/nested/nested.csv'
     """
-    _parent: Trail
     entry_type: type[E] = Entry
-
-    def __init__(self, parent: Trail | None = None) -> None:
-        Node.__init__(self, parent)
-        self.data: dict[str, E] = {}
-        self.ids: list[str] = []
-
-    @property
-    def select(self) -> Select[Self, E]:
-        # a property, since a cached_property leaves Self unbound and `assets.select(...)` would
-        # type as Any rather than Assets
-        return Select(self)
-
-    def __repr__(self) -> str:
-        return items_repr(
-            type(self).__name__,
-            (
-                self[identifier]
-                for identifier in self.ids
-            ),
-        )
 
     @cached_property
     def path2entry(self) -> dict[Path, E]:
@@ -316,42 +294,12 @@ class Entries[E: Entry](Node):
                 del collection.path2entry[previous]
         self[entry.id] = entry
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.id2entry)
-
-    def __len__(self) -> int:
-        return len(self.id2entry)
-
-    def __contains__(self, key: EntryKey) -> bool:
+    def __contains__(self, key: EntryKey | E) -> bool:
+        if isinstance(key, Entry):
+            return key.id in self.id2entry
         if isinstance(key, str) and key in self.id2entry:
             return True
         return Path(key).expanduser().resolve() in self.path2entry
-
-    @overload
-    def get(self, key: EntryKey) -> E | None: ...
-
-    @overload
-    def get[D](
-        self,
-        key: EntryKey,
-        default: D,
-    ) -> E | D: ...
-
-    def get[D](
-        self,
-        key: EntryKey,
-        default: D | None = None,
-    ) -> E | D | None:
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
-    def items(self) -> ItemsView[str, E]:
-        return self.data.items()
-
-    def values(self) -> ValuesView[E]:
-        return self.data.values()
 
     def clear(self) -> None:
         """
@@ -359,8 +307,8 @@ class Entries[E: Entry](Node):
         that a cleared collection stays cleared rather than coming back with the log's replay.
         """
         paths = tuple(
-            self.id2entry[identifier].path
-            for identifier in self.ids
+            entry.path
+            for entry in self
         )
         if not paths:
             return

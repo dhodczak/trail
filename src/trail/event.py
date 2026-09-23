@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections import UserDict
-from collections.abc import AsyncIterator, Iterable, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import cached_property
@@ -11,10 +10,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Self
 from uuid import uuid4
 
+from trail.collection import Collection
 from trail.entry import Entry
 from trail.node import Node
-from trail.select import Select
-from trail.util import asset_repr, items_repr, mtime_repr, normalize_id, st_size_repr
+from trail.util import asset_repr, mtime_repr, normalize_id, st_size_repr
 
 if TYPE_CHECKING:
     from trail.trail import Trail
@@ -278,7 +277,7 @@ class WatchdogEvent(Event):
         if self.is_directory and self.event_type == "deleted":
             trail.watchdog.invalidate(source)
         self.entry = entry
-        trail.events[self.id] = self
+        trail.events.append(self)
         return entry
 
 
@@ -355,7 +354,7 @@ class JSONL(Node):
             return
         text = "".join(
             json.dumps(event.to_record(), ensure_ascii=False) + "\n"
-            for event in self._parent.values()
+            for event in self._parent
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -460,10 +459,7 @@ class Watch(Node):
         return "\n".join(lines)
 
 
-class Events(
-    UserDict[str, Event],
-    Node,
-):
+class Events(Collection[str, Event]):
     """
     A collection of Event objects that have occurred in a Trail.
 
@@ -485,13 +481,6 @@ class Events(
             event_type: 'opened'
     """
 
-    _parent: Trail
-
-    def __init__(self, parent: Trail) -> None:
-        UserDict.__init__(self)
-        Node.__init__(self, parent)
-        self.ids: list[str] = []
-
     @cached_property
     def jsonl(self) -> JSONL:
         return JSONL(self)
@@ -501,23 +490,21 @@ class Events(
         """Awaits the events yet to be recorded, in place of polling the collection."""
         return Watch(self)
 
-    @cached_property
-    def select(self) -> Select[Events, Event]:
-        return Select(self)
-
-    def update(
-        self,
-        m: Mapping[str, Event] | Iterable[tuple[str, Event]],
-        /,
-    ) -> None:
-        batch = dict(m)
-        for value in batch.values():
-            if not isinstance(value, Event):
-                raise TypeError(f"Expected Event, got {type(value).__name__}")
-        replacing = any(key in self.data for key in batch)
+    def extend(self, events: Iterable[Event]) -> None:
+        """Record `events` together, so a burst of them costs the log one write, not one each."""
+        batch: dict[str, Event] = {}
+        for event in events:
+            if not isinstance(event, Event):
+                raise TypeError(f"Expected Event, got {type(event).__name__}")
+            batch[event.id] = event
+        replacing = any(identifier in self.data for identifier in batch)
         if not replacing:
             self.jsonl.append(batch.values())
-        appended = [key for key in batch if key not in self.data]
+        appended = [
+            identifier
+            for identifier in batch
+            if identifier not in self.data
+        ]
         self.ids.extend(appended)
         self.data.update(batch)
         if replacing:
@@ -547,9 +534,5 @@ class Events(
         self.jsonl.write()
 
     def clear(self) -> None:
-        self.data.clear()
-        self.ids.clear()
+        super().clear()
         self.jsonl.write()
-
-    def __repr__(self) -> str:
-        return items_repr(type(self).__name__, self.data.values())

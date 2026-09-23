@@ -98,7 +98,7 @@ class Dir(Entry):
         trail = self._trail
         descendants = (
             entry
-            for entry in tuple(trail.entries.id2entry.values())
+            for entry in trail.entries
             if entry is not self and entry.path.is_relative_to(previous_path)
         )
         for entry in descendants:

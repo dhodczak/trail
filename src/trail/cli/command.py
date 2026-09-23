@@ -12,7 +12,7 @@ from prompt_toolkit.document import Document
 
 from trail.cli.node import Node
 from trail.dir import Dir
-from trail.select import SLICE, Collection, Select
+from trail.select import SLICE, Select, Selectable
 
 if TYPE_CHECKING:
     from trail.cli.commands import Commands
@@ -85,9 +85,7 @@ class Command(Node):
 
     def offer(self, word: str) -> Iterator[Completion]:
         """Completions drawn from what is tracked rather than from the filesystem."""
-        entries = self._trail.entries
-        for identifier in entries.ids:
-            entry = entries[identifier]
+        for entry in self._trail.entries:
             display = self.display(entry.path, isinstance(entry, Dir))
             if display.startswith(word):
                 yield Completion(display, start_position=-len(word))
@@ -136,12 +134,11 @@ class Command(Node):
 
     def tracked(self, pattern: Path) -> list[Path]:
         """The tracked paths a glob matches; `paths` uses this in place of the filesystem."""
-        entries = self._trail.entries
         expanded = str(self.absolute(pattern))
         out = sorted(
-            entries[identifier].path
-            for identifier in entries.ids
-            if fnmatch(str(entries[identifier].path), expanded)
+            entry.path
+            for entry in self._trail.entries
+            if fnmatch(str(entry.path), expanded)
         )
         return out
 
@@ -175,7 +172,7 @@ class Command(Node):
         return path.resolve()
 
 
-class Query[T: Collection[Any], V](Select[T, V]):
+class Query[T: Selectable[Any], V](Select[T, V]):
     _parent: T
 
     def __init__(

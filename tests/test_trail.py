@@ -26,7 +26,7 @@ class TestTrail:
 
     @staticmethod
     def records(collection: Events | Entries) -> list:
-        return list(collection.values())
+        return list(collection)
 
     @staticmethod
     def opened_event(
@@ -40,8 +40,8 @@ class TestTrail:
             event_type=opened
             src_path='{csv}'
         """)
-        # iterating the selection yields ids, and the callers poll until this is not None
-        return next(iter(opened.values()), None)
+        # the callers poll until this is not None
+        return next(iter(opened), None)
 
 
     def test_pathless_track_and_open(self) -> None:
@@ -195,7 +195,7 @@ class TestTrail:
                 assert opened.entry is entry
                 records = [
                     event.to_record()
-                    for event in trail.events.values()
+                    for event in trail.events
                 ]
                 stored = [
                     json.loads(line)
@@ -210,7 +210,7 @@ class TestTrail:
                     "import json, sys; from trail import Trail; "
                     "trail = Trail(sys.argv[1]); "
                     'print(json.dumps({"id": trail.id, '
-                    '"events": [event.to_record() for event in trail.events.values()], '
+                    '"events": [event.to_record() for event in trail.events], '
                     '"entry_id": trail.entries[sys.argv[2]].id}))',
                     str(root),
                     str(csv),
@@ -230,13 +230,13 @@ class TestTrail:
                 assert restored.id == trail.id
                 assert [
                     event.to_record()
-                    for event in restored.events.values()
+                    for event in restored.events
                 ] == records
                 restored_entry = restored.entries[csv]
                 assert restored_entry.id == entry.id
                 assert all(
                     event.entry is restored_entry
-                    for event in restored.events.values()
+                    for event in restored.events
                 )
                 previous = len(restored.events)
                 with csv.open(encoding="utf-8") as stream:
@@ -339,14 +339,14 @@ class TestTrail:
                 await trail.watchdog.stop()
                 records = [
                     event.to_record()
-                    for event in trail.events.values()
+                    for event in trail.events
                 ]
                 csv.unlink()
                 restored = Trail(root)
                 assert restored.entries[csv].id == entry.id
                 assert [
                     event.to_record()
-                    for event in restored.events.values()
+                    for event in restored.events
                 ] == records
                 await restored.watchdog.stop()
 
@@ -459,7 +459,7 @@ class TestTrail:
                     while not any(
                         event.event_type == 'modified'
                         and event.src_path == str(csv)
-                        for event in trail.events.select[previous:].values()
+                        for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 previous = len(trail.events)
@@ -468,7 +468,7 @@ class TestTrail:
                     while not any(
                         event.event_type == 'deleted'
                         and event.src_path == str(csv)
-                        for event in trail.events.select[previous:].values()
+                        for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
@@ -476,7 +476,7 @@ class TestTrail:
                 assert trail.events.select[-1].event_type == 'deleted'
                 assert all(
                     event.entry is entry
-                    for event in trail.events.values()
+                    for event in trail.events
                 )
                 history = trail.events.jsonl.path.read_bytes()
                 expected_ids = trail.events.ids.copy()
@@ -486,7 +486,7 @@ class TestTrail:
                 assert restored.events.select[-1].id == expected_ids[-1]
                 assert [
                     event.id
-                    for event in restored.events.select[::-1].values()
+                    for event in restored.events.select[::-1]
                 ] == expected_ids[::-1]
                 assert restored.entries[csv].id == entry.id
                 restored.events.jsonl.read()
@@ -751,7 +751,7 @@ class TestTrail:
                     while not any(
                         event.event_type == 'moved'
                         and event.dest_path == str(renamed)
-                        for event in trail.events.select[previous:].values()
+                        for event in trail.events.select[previous:]
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()

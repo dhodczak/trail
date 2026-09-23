@@ -32,14 +32,14 @@ FALSE: Final = frozenset(('false', 'no', '0'))
 PARENTHESES: Final = frozenset('()')
 
 
-class Collection[V](Protocol):
+class Selectable[V](Protocol):
     # what Select needs of the collection it hangs off: the records by key, and the keys in the
     # order a position counts them
     data: dict[str, V]
     ids: list[str]
 
 
-class Select[T: Collection[Any], V](Node):
+class Select[T: Selectable[Any], V](Node):
     """
     Picks records out of the collection it hangs off and returns them as a copy of that
     collection: the same parent, but a data dict holding only what was picked.

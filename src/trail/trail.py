@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from functools import cached_property
+from itertools import islice
 from pathlib import Path
 from uuid import uuid4
 
@@ -224,7 +225,7 @@ class Trail(Node):
             if entry is None:
                 event = AddEntryEvent(src_path=str(path))
                 entry = event.apply(self)
-                self.events[event.id] = event
+                self.events.append(event)
             tracked.append(entry)
         if len(paths) == 1:
             return tracked[0]
@@ -245,7 +246,7 @@ class Trail(Node):
             event = RemoveEntryEvent(src_path=str(path))
             result = event.apply(self)
             if result is not None:
-                self.events[event.id] = event
+                self.events.append(event)
                 offtrailed.append(result)
         if len(paths) == 1 and offtrailed:
             return offtrailed[0]
@@ -277,12 +278,14 @@ class Trail(Node):
             f"    dir: {bare_repr(directory)}",
         ]
         entries = self.entries
-        identifiers = entries.ids
         lines.extend(
             list_repr(
                 "entries",
-                (str(entries[identifier].path) for identifier in identifiers[: self.repr_limit]),
-                len(identifiers),
+                (
+                    str(entry.path)
+                    for entry in islice(entries, self.repr_limit)
+                ),
+                len(entries),
             )
         )
         return "\n".join(lines)
