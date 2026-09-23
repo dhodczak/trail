@@ -69,3 +69,29 @@ class TestPaste:
                     await looking
 
         asyncio.run(run())
+
+
+if __name__ == "__main__":
+    test_object = TestPaste()
+    tests = [
+        (
+            "test_a_padded_line_loses_only_its_padding",
+            "a padded line loses only its padding",
+        ),
+        (
+            "test_a_line_break_does_not_reach_a_bar_that_is_one_line",
+            "a line break does not reach a bar that is one line",
+        ),
+        (
+            "test_a_path_holding_a_space_survives_the_paste",
+            "a path holding a space survives the paste",
+        ),
+        (
+            "test_the_bar_holds_what_a_double_click_pasted",
+            "the bar holds what a double click pasted",
+        ),
+    ]
+
+    for method_name, description in tests:
+        getattr(test_object, method_name)()
+        print(f"  ✓ {description}")

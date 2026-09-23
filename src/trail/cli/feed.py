@@ -39,7 +39,7 @@ class Feed(Node):
         Append `events`, writing a date row whenever the day changes.
 
         `start` is where the batch begins in the log. Records are numbered from it, so each one
-        shows the number `events` and `by_pos` address it by, not its place in this batch.
+        shows the number `events` and `select` address it by, not its place in this batch.
         """
         rows: list[StyleAndTextTuples] = []
         for position, event in enumerate(events, start):

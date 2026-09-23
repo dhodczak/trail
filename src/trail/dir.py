@@ -14,7 +14,7 @@ class Dir(Entry):
     """
     Represents a directory entry tracked by a Trail.
 
-    >>> trail.dirs.by_pos[0]
+    >>> trail.dirs.select[0]
     Dir
         id: 'decbe4d041fa4c1893da693c70ad9105'
         path: '/tmp/tmpbzh09nb5/folder'

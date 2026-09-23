@@ -14,7 +14,7 @@ from uuid import uuid4
 from trail.entry import Entry
 from trail.node import Node
 from trail.select import Select
-from trail.util import ByPos, asset_repr, items_repr, mtime_repr, normalize_id, st_size_repr
+from trail.util import asset_repr, items_repr, mtime_repr, normalize_id, st_size_repr
 
 if TYPE_CHECKING:
     from trail.trail import Trail
@@ -495,23 +495,8 @@ class Events(
         return Watch(self)
 
     @cached_property
-    def by_pos(self) -> ByPos[Event]:
-        """Allows for Events to be indexed by integer position, rather than ID or path."""
-        return ByPos(self)
-
-    @cached_property
-    def select(self) -> Select[Events]:
-        # a bare value is tried as the event's own id, then its resource's, then as a path
-        return Select(
-            self,
-            fields={
-                "id": "id",
-                "entry": "id",
-                "src_path": "path",
-                "dest_path": "path",
-                "event_type": "text",
-            },
-        )
+    def select(self) -> Select[Events, Event]:
+        return Select(self)
 
     def update(
             self,

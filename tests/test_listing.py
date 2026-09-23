@@ -87,7 +87,7 @@ class TestListing:
     def test_a_bare_value_tries_the_fields_in_turn(self) -> None:
         with self.session() as console:
             trail = console._trail
-            event = trail.events.by_pos[1]
+            event = trail.events.select[1]
             entry = trail.assets[console.root / "c.csv"]
             # the record's own id, then the resource's, then a path, each found without being named
             assert self.positions(self.run(console, f"events {event.id}")) == [1]
@@ -224,3 +224,81 @@ class TestListing:
             assert not len(trail.entries)
             assert not len(trail.events)
             assert "already empty" in self.run(console, "clear")
+
+
+if __name__ == "__main__":
+    test_object = TestListing()
+    tests = [
+        (
+            "test_a_slice_counts_the_way_python_counts",
+            "a slice counts the way python counts",
+        ),
+        (
+            "test_a_filter_keeps_the_position_the_collection_addresses",
+            "a filter keeps the position the collection addresses",
+        ),
+        (
+            "test_a_path_filter_takes_either_way_of_writing_it",
+            "a path filter takes either way of writing it",
+        ),
+        (
+            "test_a_bare_value_tries_the_fields_in_turn",
+            "a bare value tries the fields in turn",
+        ),
+        (
+            "test_assets_and_dirs_list_their_own_collections",
+            "assets and dirs list their own collections",
+        ),
+        (
+            "test_values_for_the_one_field_read_as_alternatives",
+            "values for the one field read as alternatives",
+        ),
+        (
+            "test_values_for_different_fields_all_have_to_hold",
+            "values for different fields all have to hold",
+        ),
+        (
+            "test_a_slice_cuts_what_the_values_left",
+            "a slice cuts what the values left",
+        ),
+        (
+            "test_slices_cut_in_the_order_they_were_written",
+            "slices cut in the order they were written",
+        ),
+        (
+            "test_a_field_that_does_not_exist_is_named_back",
+            "a field that does not exist is named back",
+        ),
+        (
+            "test_the_key_empties_the_rows_but_not_the_tracking",
+            "the key empties the rows but not the tracking",
+        ),
+        (
+            "test_a_clear_says_what_would_go_before_it_goes",
+            "a clear says what would go before it goes",
+        ),
+        (
+            "test_clearing_a_collection_unregisters_and_stays_cleared",
+            "clearing a collection unregisters and stays cleared",
+        ),
+        (
+            "test_clearing_the_entries_takes_both_collections",
+            "clearing the entries takes both collections",
+        ),
+        (
+            "test_clearing_the_events_empties_the_log",
+            "clearing the events empties the log",
+        ),
+        (
+            "test_the_feed_renders_what_is_recorded_after_a_clear",
+            "the feed renders what is recorded after a clear",
+        ),
+        (
+            "test_clear_discards_the_whole_record",
+            "clear discards the whole record",
+        ),
+    ]
+
+    for method_name, description in tests:
+        getattr(test_object, method_name)()
+        print(f"  ✓ {description}")

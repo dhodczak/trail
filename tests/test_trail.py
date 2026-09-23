@@ -10,7 +10,8 @@ from tempfile import TemporaryDirectory
 
 from trail import Trail
 from trail.checkpoint import Checkpoint
-from trail.event import AddEntryEvent, RemoveEntryEvent, WatchdogEvent
+from trail.entry import Entries
+from trail.event import AddEntryEvent, Events, RemoveEntryEvent, WatchdogEvent
 
 
 class TestTrail:
@@ -24,21 +25,24 @@ class TestTrail:
             yield root
 
     @staticmethod
+    def records(collection: Events | Entries) -> list:
+        return list(collection.values())
+
+    @staticmethod
     def opened_event(
         trail: Trail,
         csv: Path,
         previous: int,
     ) -> WatchdogEvent | None:
-        return next(
-            (
-                event
-                for event in trail.events.by_pos[previous:]
-                if isinstance(event, WatchdogEvent)
-                and event.event_type == "opened"
-                and event.src_path == str(csv)
-            ),
-            None,
-        )
+        opened = trail.events.select(f"""
+            {previous}:
+            cls=WatchdogEvent
+            event_type=opened
+            src_path='{csv}'
+        """)
+        # iterating the selection yields ids, and the callers poll until this is not None
+        return next(iter(opened.values()), None)
+
 
     def test_pathless_track_and_open(self) -> None:
         async def run() -> None:
@@ -46,7 +50,7 @@ class TestTrail:
                 csv = root / "dataset.csv"
                 trail = Trail()
                 entry = trail.track(csv)
-                addition = trail.events.by_pos[0]
+                addition = trail.events.select[0]
                 assert isinstance(addition, AddEntryEvent)
                 assert addition.entry is entry
                 assert trail.watchdog.observer.is_alive()
@@ -191,7 +195,7 @@ class TestTrail:
                 assert opened.entry is entry
                 records = [
                     event.to_record()
-                    for event in trail.events.by_pos[:]
+                    for event in trail.events.values()
                 ]
                 stored = [
                     json.loads(line)
@@ -206,7 +210,7 @@ class TestTrail:
                     "import json, sys; from trail import Trail; "
                     "trail = Trail(sys.argv[1]); "
                     'print(json.dumps({"id": trail.id, '
-                    '"events": [event.to_record() for event in trail.events.by_pos[:]], '
+                    '"events": [event.to_record() for event in trail.events.values()], '
                     '"entry_id": trail.entries[sys.argv[2]].id}))',
                     str(root),
                     str(csv),
@@ -226,13 +230,13 @@ class TestTrail:
                 assert restored.id == trail.id
                 assert [
                     event.to_record()
-                    for event in restored.events.by_pos[:]
+                    for event in restored.events.values()
                 ] == records
                 restored_entry = restored.entries[csv]
                 assert restored_entry.id == entry.id
                 assert all(
                     event.entry is restored_entry
-                    for event in restored.events.by_pos[:]
+                    for event in restored.events.values()
                 )
                 previous = len(restored.events)
                 with csv.open(encoding="utf-8") as stream:
@@ -268,7 +272,7 @@ class TestTrail:
                 await trail.watchdog.stop()
                 restored = Trail(root)
                 assert csv not in restored.entries
-                removal = restored.events.by_pos[-1]
+                removal = restored.events.select[-1]
                 assert isinstance(removal, RemoveEntryEvent)
                 assert removal.entry.id == entry.id
                 previous = len(restored.events)
@@ -286,7 +290,7 @@ class TestTrail:
 
                 assert opened.entry.id == other_entry.id
                 assert csv not in restored.entries
-                assert restored.events.by_pos[previous:] == [opened]
+                assert self.records(restored.events.select[previous:]) == [opened]
                 reloaded = Trail(root)
                 assert csv not in reloaded.entries
                 await reloaded.watchdog.stop()
@@ -305,9 +309,9 @@ class TestTrail:
             csv.unlink()
 
             restored = Trail(root)
-            addition = restored.events.by_pos[0]
-            removal = restored.events.by_pos[1]
-            readdition = restored.events.by_pos[2]
+            addition = restored.events.select[0]
+            removal = restored.events.select[1]
+            readdition = restored.events.select[2]
             assert isinstance(addition, AddEntryEvent)
             assert isinstance(removal, RemoveEntryEvent)
             assert isinstance(readdition, AddEntryEvent)
@@ -335,27 +339,27 @@ class TestTrail:
                 await trail.watchdog.stop()
                 records = [
                     event.to_record()
-                    for event in trail.events.by_pos[:]
+                    for event in trail.events.values()
                 ]
                 csv.unlink()
                 restored = Trail(root)
                 assert restored.entries[csv].id == entry.id
                 assert [
                     event.to_record()
-                    for event in restored.events.by_pos[:]
+                    for event in restored.events.values()
                 ] == records
                 await restored.watchdog.stop()
 
         asyncio.run(run())
 
-    def test_by_pos_slicing_after_tracking_changes(self) -> None:
+    def test_select_slicing_after_tracking_changes(self) -> None:
         with self.workspace() as root:
             csv = root / 'dataset.csv'
             other_csv = root / 'other.csv'
             other_csv.write_text('name,value\nother,7\n', encoding='utf-8')
             trail = Trail()
-            positions = trail.events.by_pos
-            assert positions[:] == []
+            positions = trail.events.select
+            assert self.records(positions[:]) == []
             trail.track(csv)
             first = positions[-1]
             trail.track(other_csv)
@@ -367,21 +371,21 @@ class TestTrail:
 
             assert positions[0] is first
             assert positions[-1] is fourth
-            assert positions[:] == [first, second, third, fourth]
-            assert positions[1:3] == [second, third]
-            assert positions[:-1] == [first, second, third]
-            assert positions[::2] == [first, third]
-            assert positions[::-1] == [fourth, third, second, first]
-            assert positions[10:] == []
-            assert len(positions) == len(trail.events)
+            assert self.records(positions[:]) == [first, second, third, fourth]
+            assert self.records(positions[1:3]) == [second, third]
+            assert self.records(positions[:-1]) == [first, second, third]
+            assert self.records(positions[::2]) == [first, third]
+            assert self.records(positions[::-1]) == [fourth, third, second, first]
+            assert self.records(positions[10:]) == []
+            assert len(positions[:]) == len(trail.events)
             assert trail.events.ids == [first.id, second.id, third.id, fourth.id]
             assert trail.events[first.id] is positions[0]
             assert isinstance(third, RemoveEntryEvent)
 
             trail.track(csv)
-            assert positions[:] == [first, second, third, fourth]
+            assert self.records(positions[:]) == [first, second, third, fourth]
             trail.offtrail(other_csv)
-            assert len(positions) == 5
+            assert len(positions[:]) == 5
             assert isinstance(positions[-1], RemoveEntryEvent)
             assert positions[-1].entry is second.entry
             assert trail.events.ids[-1] == positions[-1].id
@@ -437,7 +441,7 @@ class TestTrail:
             assert removed == readded[::-1]
             assert len(trail.entries) == 0
 
-    def test_by_pos_survives_file_changes_and_reload(self) -> None:
+    def test_select_survives_file_changes_and_reload(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
                 csv = root / 'dataset.csv'
@@ -455,7 +459,7 @@ class TestTrail:
                     while not any(
                         event.event_type == 'modified'
                         and event.src_path == str(csv)
-                        for event in trail.events.by_pos[previous:]
+                        for event in trail.events.select[previous:].values()
                     ):
                         await asyncio.sleep(0.01)
                 previous = len(trail.events)
@@ -464,25 +468,25 @@ class TestTrail:
                     while not any(
                         event.event_type == 'deleted'
                         and event.src_path == str(csv)
-                        for event in trail.events.by_pos[previous:]
+                        for event in trail.events.select[previous:].values()
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
 
-                assert trail.events.by_pos[-1].event_type == 'deleted'
+                assert trail.events.select[-1].event_type == 'deleted'
                 assert all(
                     event.entry is entry
-                    for event in trail.events.by_pos[:]
+                    for event in trail.events.values()
                 )
                 history = trail.events.jsonl.path.read_bytes()
                 expected_ids = trail.events.ids.copy()
                 restored = Trail(root)
                 assert restored.events.ids == expected_ids
-                assert restored.events.by_pos[0].id == expected_ids[0]
-                assert restored.events.by_pos[-1].id == expected_ids[-1]
+                assert restored.events.select[0].id == expected_ids[0]
+                assert restored.events.select[-1].id == expected_ids[-1]
                 assert [
                     event.id
-                    for event in restored.events.by_pos[::-1]
+                    for event in restored.events.select[::-1].values()
                 ] == expected_ids[::-1]
                 assert restored.entries[csv].id == entry.id
                 restored.events.jsonl.read()
@@ -500,38 +504,38 @@ class TestTrail:
             directory = root / 'subdirectory'
             directory.mkdir()
             trail = Trail()
-            files = trail.assets.by_pos
-            directories = trail.dirs.by_pos
-            entries = trail.entries.by_pos
+            files = trail.assets.select
+            directories = trail.dirs.select
+            entries = trail.entries.select
             first = trail.track(csv)
             second = trail.track(other_csv)
             tracked_directory = trail.track(directory)
 
-            assert files[:] == [first, second]
-            assert files[::-1] == [second, first]
-            assert directories[:] == [tracked_directory]
-            assert entries[:] == [first, second, tracked_directory]
+            assert self.records(files[:]) == [first, second]
+            assert self.records(files[::-1]) == [second, first]
+            assert self.records(directories[:]) == [tracked_directory]
+            assert self.records(entries[:]) == [first, second, tracked_directory]
             assert trail.assets.ids == [first.id, second.id]
             assert trail.dirs.ids == [tracked_directory.id]
             assert trail.assets[first.id] is files[0]
             assert trail.assets[csv] is files[0]
             assert trail.track(csv) is first
-            assert files[:] == [first, second]
+            assert self.records(files[:]) == [first, second]
 
             trail.offtrail(csv)
-            assert files[:] == [second]
+            assert self.records(files[:]) == [second]
             assert trail.assets.ids == [second.id]
             readded = trail.track(csv)
             assert readded.id != first.id
-            assert files[:] == [second, readded]
+            assert self.records(files[:]) == [second, readded]
             assert trail.assets.ids == [second.id, readded.id]
             # the kinds are interleaved in the order they were tracked, not grouped by kind
-            assert entries[:] == [second, tracked_directory, readded]
+            assert self.records(entries[:]) == [second, tracked_directory, readded]
             assert trail.entries.ids == [second.id, tracked_directory.id, readded.id]
             trail.offtrail(other_csv, csv, directory)
-            assert files[:] == []
-            assert directories[:] == []
-            assert entries[:] == []
+            assert self.records(files[:]) == []
+            assert self.records(directories[:]) == []
+            assert self.records(entries[:]) == []
             assert trail.assets.ids == []
             assert trail.dirs.ids == []
 
@@ -551,7 +555,7 @@ class TestTrail:
             folder.rename(renamed)
             tracked[0].move(renamed)
 
-            assert trail.entries.by_pos[:] == list(tracked)
+            assert self.records(trail.entries) == list(tracked)
             assert trail.entries[renamed] is tracked[0]
             assert trail.entries[renamed / 'inner.csv'] is tracked[1]
             assert trail.assets[renamed / 'inner.csv'] is tracked[1]
@@ -570,8 +574,8 @@ class TestTrail:
             asset = trail.assets.entry(path)[0]
 
             assert trail.entries[path] is asset
-            assert trail.entries.by_pos[:] == [asset]
-            assert trail.dirs.by_pos[:] == []
+            assert self.records(trail.entries) == [asset]
+            assert self.records(trail.dirs) == []
             assert trail.entries.get(directory.id) is None
 
     def test_discovered_entries_survive_reload(self) -> None:
@@ -594,9 +598,9 @@ class TestTrail:
 
                 file_entry = trail.assets[csv]
                 directory_entry = trail.dirs[directory]
-                assert trail.assets.by_pos[:] == [file_entry]
+                assert self.records(trail.assets) == [file_entry]
                 assert trail.assets.ids == [file_entry.id]
-                assert trail.dirs.by_pos[:] == [root_entry, directory_entry]
+                assert self.records(trail.dirs) == [root_entry, directory_entry]
                 assert trail.dirs.ids == [root_entry.id, directory_entry.id]
                 csv.unlink()
                 directory.rmdir()
@@ -604,16 +608,16 @@ class TestTrail:
                 restored = Trail(root)
                 assert restored.assets.ids == trail.assets.ids
                 assert restored.dirs.ids == trail.dirs.ids
-                assert restored.assets.by_pos[0] is restored.assets[csv]
-                assert restored.assets.by_pos[0].id == file_entry.id
-                assert restored.dirs.by_pos[-1].id == directory_entry.id
-                assert restored.entries.by_pos[-1] is restored.dirs[directory]
+                assert restored.assets.select[0] is restored.assets[csv]
+                assert restored.assets.select[0].id == file_entry.id
+                assert restored.dirs.select[-1].id == directory_entry.id
+                assert restored.entries.select[-1] is restored.dirs[directory]
                 assert restored.events.jsonl.path.read_bytes() == history
                 restored.offtrail(csv, directory)
                 assert restored.assets.ids == []
                 assert restored.dirs.ids == [root_entry.id]
                 reloaded = Trail(root)
-                assert reloaded.assets.by_pos[:] == []
+                assert self.records(reloaded.assets) == []
                 assert reloaded.dirs.ids == [root_entry.id]
                 await restored.watchdog.stop()
                 await reloaded.watchdog.stop()
@@ -626,7 +630,7 @@ class TestTrail:
             trail = Trail(root)
             entry = trail.track(csv)
             directory = trail.track(root)
-            checkpoint = Checkpoint(events=trail.events.by_pos[:])
+            checkpoint = Checkpoint(events=self.records(trail.events))
             identifiers = [
                 trail.id,
                 entry.id,
@@ -662,7 +666,7 @@ class TestTrail:
             csv = root / 'dataset.csv'
             trail = Trail(root)
             entry = trail.track(csv)
-            event = trail.events.by_pos[0]
+            event = trail.events.select[0]
             legacy_metadata = {'id': int(trail.id, 16)}
             trail.json.path.write_text(json.dumps(legacy_metadata), encoding='utf-8')
             legacy_event = event.to_record()
@@ -677,7 +681,7 @@ class TestTrail:
             assert restored.id == trail.id
             assert restored.assets.ids == [entry.id]
             assert restored.events.ids == [event.id]
-            assert restored.entries[entry.id] is restored.assets.by_pos[0]
+            assert restored.entries[entry.id] is restored.assets.select[0]
             assert restored.events[event.id].entry is restored.entries[entry.id]
             restored.offtrail(csv)
             reloaded = Trail(root)
@@ -747,7 +751,7 @@ class TestTrail:
                     while not any(
                         event.event_type == 'moved'
                         and event.dest_path == str(renamed)
-                        for event in trail.events.by_pos[previous:]
+                        for event in trail.events.select[previous:].values()
                     ):
                         await asyncio.sleep(0.01)
                 await trail.watchdog.stop()
@@ -848,11 +852,11 @@ if __name__ == "__main__":
             "tracking changes replay with stable entry identities",
         ),
         (
-            'test_by_pos_slicing_after_tracking_changes',
+            'test_select_slicing_after_tracking_changes',
             'positional slicing follows real tracking changes',
         ),
         (
-            'test_by_pos_survives_file_changes_and_reload',
+            'test_select_survives_file_changes_and_reload',
             'positional indexing survives real file changes and reload',
         ),
         (

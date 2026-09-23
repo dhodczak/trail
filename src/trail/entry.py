@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import ItemsView, Iterable, Iterator
+from collections.abc import ItemsView, Iterable, Iterator, ValuesView
 from dataclasses import dataclass, field, fields
 from functools import cached_property
 from pathlib import Path
@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Self, overload
 from uuid import uuid4
 
 from trail.node import Node
+from trail.select import Select
 from trail.util import (
     MISSING,
-    ByPos,
     PathLike,
     bare_repr,
     items_repr,
@@ -220,11 +220,14 @@ class Entries[E: Entry](Node):
 
     def __init__(self, parent: Trail | None = None) -> None:
         Node.__init__(self, parent)
+        self.data: dict[str, E] = {}
         self.ids: list[str] = []
 
-    @cached_property
-    def by_pos(self) -> ByPos[E]:
-        return ByPos(self)
+    @property
+    def select(self) -> Select[Self, E]:
+        # a property, since a cached_property leaves Self unbound and `assets.select(...)` would
+        # type as Any rather than Assets
+        return Select(self)
 
     def __repr__(self) -> str:
         return items_repr(
@@ -237,11 +240,15 @@ class Entries[E: Entry](Node):
 
     @cached_property
     def path2entry(self) -> dict[Path, E]:
-        return {}
+        # built from data rather than beside it, so that a selection builds its own
+        return {
+            entry.path: entry
+            for entry in self.data.values()
+        }
 
-    @cached_property
+    @property
     def id2entry(self) -> dict[str, E]:
-        return {}
+        return self.data
 
     @property
     def _synced(self) -> Iterator[Self]:
@@ -341,7 +348,10 @@ class Entries[E: Entry](Node):
             return default
 
     def items(self) -> ItemsView[str, E]:
-        return self.id2entry.items()
+        return self.data.items()
+
+    def values(self) -> ValuesView[E]:
+        return self.data.values()
 
     def clear(self) -> None:
         """

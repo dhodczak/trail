@@ -3,28 +3,25 @@ from __future__ import annotations
 import builtins
 import re
 import shlex
-from collections import UserDict
-from collections.abc import Iterable
+from collections import deque
+from collections.abc import Callable, Iterable
 from copy import copy
 from datetime import UTC, datetime, time
+from functools import cached_property
 from operator import ge, gt, le, lt
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Protocol, overload
 
 from trail.node import Node
 
-# how a declared field is matched: an id by prefix, a path once resolved, text as written
-type Kind = Literal['id', 'path', 'text']
-
 # start:stop:step, each part optional, counted the way python counts
 SLICE: Final = re.compile(r'(-?\d+)?:(-?\d+)?(?::(-?\d+)?)?')
-# the field has to be an identifier, so an absolute path holding an operator still reads as a path
 COMPARISON: Final = re.compile(
     r'(?P<field>[A-Za-z_]\w*)(?P<operator>==|!=|<=|>=|=|<|>)(?P<value>.*)',
     re.DOTALL,
 )
 EQUALITY: Final = ('=', '==')
-ORDERINGS: Final = {
+ORDERINGS: Final[dict[str, Callable[[Any, Any], bool]]] = {
     '<': lt,
     '<=': le,
     '>': gt,
@@ -32,73 +29,139 @@ ORDERINGS: Final = {
 }
 TRUE: Final = frozenset(('true', 'yes', '1'))
 FALSE: Final = frozenset(('false', 'no', '0'))
+PARENTHESES: Final = frozenset('()')
 
 
-class Select[T: UserDict](Node):
+class Collection[V](Protocol):
+    # what Select needs of the collection it hangs off: the records by key, and the keys in the
+    # order a position counts them
+    data: dict[str, V]
+    ids: list[str]
+
+
+class Select[T: Collection[Any], V](Node):
     """
     Picks records out of the collection it hangs off and returns them as a copy of that
-    collection: the same parent and cached state, but a data dict holding only what was picked.
+    collection: the same parent, but a data dict holding only what was picked.
 
-        events.select('/path/to/file.csv')
-        events.select('/path/to/file.csv "/path/to/other file.csv" -5:')
-        events.select('id=c9f380c2 path=path/to/file.csv')
-        events.select('st_size<1024', 'timestamp>=2026-09-22')
+        events.select('src_path=/path/to/file.csv')
+        events.select('id=8a43da699bf242e7976e7bb74df81d0f or id=c2152a8b8f31416abbfe7106fce8cb6c')
+        events.select('st_size<1024 and not event_type=opened')
+        events.select('(src_path=/path/to/a.csv or src_path=/path/to/b.csv) -5:')
+        events.select('cls=WatchdogEvent event_type=opened')
 
-    The arguments are split the way a shell splits them, and the pieces apply as a chain, each
-    selecting from what the one before it left. A run of alternatives, bare values or `=` on the
-    one field, is the exception: all of them select from what preceded the run, and are pooled.
+    Every term names its field, and the value is read as whatever type the record holds there;
+    a record held by reference, such as an event's entry, compares by its id. `cls` is the
+    record's class, and `cls=Event` holds for its subclasses too, as isinstance would. `not`
+    binds tightest, then `and`, then `or`, and terms written side by side are joined by `and`.
 
-        events.select('a.csv b.csv -5:')      the last five records of either file
-        events.select('-5: a.csv')            those of the last five records that are a.csv's
+    A slice is a term like any other. Under `and`, each term selects from what the one before it
+    left, so the order they are written in matters:
+
+        events.select('src_path=/path/to/a.csv -5:')    the last five of that file's records
+        events.select('-5: src_path=/path/to/a.csv')    those of the last five that are that file's
+
+    Indexed by position, it gives the record there, or a copy holding a slice of them.
+
+        events.select[0]                                the first record
+        events.select[-5:]                              a copy holding the last five
     """
 
     _parent: T
 
-    def __init__(
-            self,
-            parent: T,
-            fields: dict[str, Kind] | None = None,
-    ) -> None:
-        Node.__init__(self, parent)
-        if fields is None:
-            fields = {'id': 'id'}
-        # the fields a bare value is tried against, in order; a field left out can still be
-        # compared, and is matched by the type of what it holds
-        self.fields = fields
+    def __init__(self, parent: T) -> None:
+        Node.__init__(self)
+        # assigned rather than passed, since Node.__init__ takes a Node and T is typed only by
+        # what Select uses of it
+        self._parent = parent
 
-    def __call__( self, item ) -> T:
-        # the arguments read as one line, so a run of alternatives may span several of them
+    def __call__(self, item: str) -> T:
         return self.split(item)
+
+    @overload
+    def __getitem__(self, item: int) -> V: ...
+
+    @overload
+    def __getitem__(self, item: builtins.slice) -> T: ...
+
+    def __getitem__(self, item: int | builtins.slice) -> V | T:
+        collection = self._parent
+        if isinstance(item, builtins.slice):
+            keys = collection.ids[item]
+            return self.subset(keys)
+        identifier = collection.ids[item]
+        return collection.data[identifier]
 
     def split(self, item: str) -> T:
         """
         Splits the input string into individual items, handling quotes and spaces.
         It then calls each substring as a chain.
         """
-        out = self.subset(self._parent.data)
-        before = out
-        run = None
-        for token in shlex.split(item):
-            field = self.alternative(token)
-            pooled = (
-                    field is not None
-                    and field == run
-            )
-            if not pooled:
-                before = out
-            select = type(self)(before, self.fields)
-            selected = select.dispatch(token)
-            if pooled:
-                selected = select.union(out, selected)
-            out = selected
-            run = field
+        lexer = shlex.shlex(item, posix=True, punctuation_chars='()')
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        pending: deque[str] = deque()
+        for token in lexer:
+            # a run of parentheses is lexed as one token
+            if set(token) <= PARENTHESES:
+                pending.extend(token)
+            else:
+                pending.append(token)
+        if not pending:
+            return self[:]
+        out = self.disjunction(pending)
+        if pending:
+            raise ValueError(f'unmatched {pending[0]!r} in {item!r}')
         return out
+
+    def disjunction(self, pending: deque[str]) -> T:
+        # every alternative selects from the same records, and what they select is pooled
+        out = self.conjunction(pending)
+        while self.peek(pending) == 'or':
+            pending.popleft()
+            alternative = self.conjunction(pending)
+            out = self.union(out, alternative)
+        return out
+
+    def conjunction(self, pending: deque[str]) -> T:
+        # each term selects from what the one before it left, which is how a slice cuts only
+        # what the terms before it kept
+        out = self.term(pending)
+        while self.peek(pending) not in (None, 'or', ')'):
+            if self.peek(pending) == 'and':
+                pending.popleft()
+            select = type(self)(out)
+            out = select.term(pending)
+        return out
+
+    def term(self, pending: deque[str]) -> T:
+        if not pending:
+            raise ValueError('the expression ends where a term should be')
+        token = pending.popleft()
+        if token == 'not':
+            excluded = self.term(pending)
+            keys = [
+                key
+                for key in self._parent.data
+                if key not in excluded.data
+            ]
+            return self.subset(keys)
+        if token == '(':
+            out = self.disjunction(pending)
+            if self.peek(pending) != ')':
+                raise ValueError("unclosed '('")
+            pending.popleft()
+            return out
+        if token in ('and', 'or', ')'):
+            raise ValueError(f'expected a term, got {token!r}')
+        if SLICE.fullmatch(token):
+            return self.slice(token)
+        return self.comparison(token)
 
     def slice(self, item: str) -> T:
         """Handles e.g. -5:, meaning the last 5 items"""
-        keys = list(self._parent.data)
         cut = self.bounds(item)
-        return self.subset(keys[cut])
+        return self[cut]
 
     def comparison(self, item: str) -> T:
         """Handles comparison operators like id=... or timestamp>=... or st_size<... or path!="""
@@ -113,29 +176,6 @@ class Select[T: UserDict](Node):
         # parsed once here rather than once for every record it is compared against
         moment = self.moment(match['value'])
         return self.where(match['field'], match['operator'], moment)
-
-    def lookup(self, item: str) -> T:
-        """
-        Handles when input is a path, id, etc. with no comparison. The declared fields are tried
-        in order, and the first that any record holds the value in is the one matched on.
-        """
-        data = self._parent.data
-        for field in self.fields:
-            keys = [
-                key
-                for key, record in data.items()
-                if self.equals(record, field, item)
-            ]
-            if keys:
-                return self.subset(keys)
-        return self.subset(())
-
-    def dispatch(self, token: str) -> T:
-        if SLICE.fullmatch(token):
-            return self.slice(token)
-        if COMPARISON.fullmatch(token):
-            return self.comparison(token)
-        return self.lookup(token)
 
     def union(self, *selections: T) -> T:
         keys = [
@@ -164,21 +204,23 @@ class Select[T: UserDict](Node):
     def subset(self, keys: Iterable[str]) -> T:
         collection = self._parent
         out = copy(collection)
-        # a child built for the original, such as its jsonl or by_pos, holds the original as its
-        # parent and would act on it in place of the copy; dropped, it is rebuilt on access
-        for name, value in vars(collection).items():
+        # whatever the original cached, such as its jsonl or path2entry, was built from it and
+        # is shared by the shallow copy; dropped, it is rebuilt from the copy on access
+        cached = [
+            name
+            for name in vars(out)
             if (
-                    isinstance(value, Node)
-                    and vars(value).get('_parent') is collection
-            ):
-                del vars(out)[name]
+                    name != '_parent'
+                    and isinstance(getattr(type(out), name, None), cached_property)
+            )
+        ]
+        for name in cached:
+            del vars(out)[name]
         out.data = {
             key: collection.data[key]
             for key in keys
         }
-        # the positions `by_pos` indexes by, which the shallow copy would otherwise share
-        if 'ids' in vars(out):
-            out.ids = list(out.data)
+        out.ids = list(out.data)
         return out
 
     def compare(
@@ -197,6 +239,8 @@ class Select[T: UserDict](Node):
         held = self.held(record, field)
         if held is None:
             return False
+        if isinstance(held, type):
+            raise TypeError(f'{field} is compared only by = and !=')
         coerced = self.coerce(held, field, value)
         return ORDERINGS[operator](held, coerced)
 
@@ -212,17 +256,24 @@ class Select[T: UserDict](Node):
                 or value == ''
         ):
             return False
+        if isinstance(held, type):
+            # a class answers to its own name and to those of the classes it derives from, as
+            # isinstance would
+            return any(
+                base.__name__ == value
+                for base in held.__mro__
+            )
         coerced = self.coerce(held, field, value)
-        if self.fields.get(field) == 'id':
-            # ids are only ever shown shortened, so a prefix is what there is to paste back
-            return held.startswith(coerced)
         return held == coerced
 
+    @staticmethod
     def held(
-            self,
             record: object,
             field: str,
     ) -> object | None:
+        # `cls` is the record's class, the name its stored record gives it
+        if field == 'cls':
+            return type(record)
         out = getattr(record, field, None)
         # an empty string is how an event leaves a field unset, and its repr omits it likewise
         if (
@@ -230,15 +281,8 @@ class Select[T: UserDict](Node):
                 or out == ''
         ):
             return None
-        kind = self.fields.get(field)
-        if kind == 'id':
-            # a record held by reference, such as an event's entry, is named by its id
-            return str(getattr(out, 'id', out))
-        if kind == 'path':
-            return Path(out)
-        if kind == 'text':
-            return str(out)
-        return out
+        # a record held by reference, such as an event's entry, is compared by its id
+        return getattr(out, 'id', out)
 
     def coerce(
             self,
@@ -248,8 +292,6 @@ class Select[T: UserDict](Node):
     ) -> object:
         if not isinstance(value, str):
             return value
-        if self.fields.get(field) == 'id':
-            return value.removeprefix('#').lower()
         if isinstance(held, Path):
             return Path(value).expanduser().resolve()
         if isinstance(held, datetime):
@@ -266,23 +308,16 @@ class Select[T: UserDict](Node):
         return value
 
     @staticmethod
-    def alternative(token: str) -> str | None:
-        # the run an alternative belongs to: '' for a bare value, the field for `=`; anything
-        # else is None, and chains rather than pools
-        if SLICE.fullmatch(token):
-            return None
-        match = COMPARISON.fullmatch(token)
-        if match is None:
-            return ''
-        if match['operator'] in EQUALITY:
-            return match['field']
+    def peek(pending: deque[str]) -> str | None:
+        if pending:
+            return pending[0]
         return None
 
     @staticmethod
     def parse(item: str) -> re.Match[str]:
         match = COMPARISON.fullmatch(item)
         if match is None:
-            raise ValueError(f'not a comparison: {item!r}')
+            raise ValueError(f'{item!r} is not a comparison; name its field, as in id={item}')
         return match
 
     @staticmethod

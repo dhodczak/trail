@@ -11,8 +11,7 @@ from trail.entry import Entries, Entry
 class Asset(Entry):
     """
     Represents a file entry tracked by a Trail.
-
-    >>> trail.assets.by_pos[0]
+    >>> trail.assets.select[0]
     Asset
         id: '41d3f259a5fc4c1fa13c516cf892f56e'
         path: '/tmp/tmpbzh09nb5/folder/new.csv'
