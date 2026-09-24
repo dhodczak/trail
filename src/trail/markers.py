@@ -122,8 +122,8 @@ class Markers(
     MutableSet[str],
 ):
     """
-    The extensions a Trail follows of its own accord, held lowercase and without their leading
-    dot. Every change is written through to the `.markers` file, which is the record of them.
+    The extensions a Trail follows of its own accord, held lowercase with their leading dot, as
+    `Path.suffix` spells them. Every change is written through to the `.markers` file, which is the record of them.
     """
 
     _parent: Trail
@@ -138,29 +138,30 @@ class Markers(
 
     @staticmethod
     def normalize(marker: str) -> str:
-        normalized = (
+        # 'csv', '.csv' and 'CSV' are one marker, validated without its dot and held with it
+        bare = (
             marker
             .strip()
             .removeprefix('.')
             .lower()
         )
         if (
-            not normalized
-            or normalized.startswith('.')
-            or normalized.endswith('.')
+            not bare
+            or bare.startswith('.')
+            or bare.endswith('.')
             or any(
                 char.isspace()
                 or char in RESERVED
-                for char in normalized
+                for char in bare
             )
         ):
             msg = f'Not an extension: {marker!r}'
             raise ValueError(msg)
-        return normalized
+        return f'.{bare}'
 
     @classmethod
     def _from_iterable(cls, iterable: Iterable[str]) -> set[str]:
-        # the set operators build their result through here; `markers | {'tif'}` is a value,
+        # the set operators build their result through here; `markers | {'.tif'}` is a value,
         # not a second Markers writing to the same file
         return set(iterable)
 
@@ -204,12 +205,11 @@ class Markers(
 
     def matches(self, path: PathLike) -> bool:
         suffixes = Path(path).suffixes
-        # every trailing run of suffixes, so both 'gz' and 'tar.gz' mark 'a.tar.gz'
+        # every trailing run of suffixes, so both '.gz' and '.tar.gz' mark 'a.tar.gz'
         for i in range(len(suffixes)):
             extension = (
                 ''
                 .join(suffixes[i:])
-                .removeprefix('.')
                 .lower()
             )
             if extension in self.data:
