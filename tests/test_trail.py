@@ -8,6 +8,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from trail import Trail
 from trail.checkpoint import Checkpoint
 from trail.entry import Entries
@@ -319,6 +321,41 @@ class TestTrail:
             reloaded = Trail(root)
             assert root not in reloaded.dirs
             assert len(reloaded.events) == events + 1
+
+    def test_a_subdirectory_opens_the_enclosing_trail(self) -> None:
+        with self.workspace() as root:
+            trail = Trail(root)
+            nested = root / 'a' / 'b'
+            nested.mkdir(parents=True)
+            opened = Trail(nested)
+            assert opened.dir == root / '.trail'
+            assert opened.id == trail.id
+            assert not (nested / '.trail').exists()
+
+    def test_the_nearest_trail_wins(self) -> None:
+        with self.workspace() as root:
+            inner = root / 'inner'
+            inner.mkdir()
+            Trail(root)
+            Trail(inner / '.trail')
+            nested = inner / 'deeper'
+            nested.mkdir()
+            assert Trail(nested).dir == inner / '.trail'
+
+    def test_the_search_stops_at_a_ceiling_directory(
+            self,
+            monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        with self.workspace() as root:
+            Trail(root)
+            ceiling = root / 'ceiling'
+            nested = ceiling / 'project'
+            nested.mkdir(parents=True)
+            monkeypatch.setenv('TRAIL_CEILING_DIRECTORIES', str(ceiling))
+            assert Trail(nested).dir == nested / '.trail'
+            # the starting directory is searched even when it is a ceiling
+            assert Trail(ceiling / '.trail').dir == ceiling / '.trail'
+            assert Trail(ceiling).dir == ceiling / '.trail'
 
     def test_track_untrack_and_retrack_history_can_be_restored(self) -> None:
         with self.workspace() as root:

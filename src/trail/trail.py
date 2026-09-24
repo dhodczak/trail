@@ -199,14 +199,18 @@ class Trail(Node):
     def __init__(
         self,
         dir: PathLike | None = None,
-        markers: os.PathLike[str] | str | None = 'default',
-    ) -> None:
+        markers: os.PathLike[str] | str | None = "default",
+    ):
         """
         Open the Trail for a project directory, creating it if it does not exist yet.
 
         dir:
             The project directory, or its .trail directory. If None, the Trail is
             not saved to disk.
+
+            The directory and then each of its parents are searched for a .trail, and
+            the first one found is opened. If none is found, .trail is created in dir.
+
         markers:
             The markers to start a new Trail with. Ignored when the Trail already exists on file.
 
@@ -223,13 +227,16 @@ class Trail(Node):
         else:
             dir = Path(dir).expanduser().resolve()
             if dir.name != ".trail":
-                dir /= ".trail"
+                # like git, the nearest enclosing .trail wins
+                it = (
+                    parent / ".trail"
+                    for parent in (dir, *dir.parents)
+                    if (parent / ".trail").is_dir()
+                )
+                dir = next(it, dir / ".trail")
             self.dir = dir
             created = not self.json.path.exists()
-            if (
-                created
-                and markers is not None
-            ):
+            if created and markers is not None:
                 self.markers.text.create(markers)
             self.json.load()
             self.events.jsonl.read()
@@ -320,14 +327,11 @@ class Trail(Node):
             f"    dir: {bare_repr(directory)}",
         ]
         entries = self.entries
-        lines.extend(
-            list_repr(
-                "entries",
-                (
-                    str(entry.path)
-                    for entry in islice(entries, self.repr_limit)
-                ),
-                len(entries),
-            )
+        it = (
+            str(entry.path)
+            for entry in islice(entries, self.repr_limit)
         )
+
+        reprs = list_repr("entries", it, len(entries))
+        lines.extend(reprs)
         return "\n".join(lines)
