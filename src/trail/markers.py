@@ -187,6 +187,7 @@ class Markers(
             return
         self.data.add(marker)
         self.text.append(marker)
+        self._trail.entries.mark()
 
     def discard(self, value: str) -> None:
         try:

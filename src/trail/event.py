@@ -255,6 +255,11 @@ class WatchdogEvent(Event):
                 self.event_type not in {"created", "moved"}
                 or trail.dirs.get(path.parent) is None
                 or target.is_symlink()
+                # a tracked directory takes in every new subdirectory, but only marked files
+                or (
+                    not self.is_directory
+                    and not trail.markers.matches(path)
+                )
             ):
                 return None
             try:

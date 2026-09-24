@@ -308,6 +308,15 @@ class Watchdog(Node):
             trail = self._trail
             for event in batch:
                 if event.apply(trail) is None:
+                    # a file appearing in a watched directory that is not itself tracked, such as
+                    # the parent of a tracked asset, is tracked only if a marker indicates it
+                    if (
+                        not event.is_directory
+                        and event.event_type in ("created", "moved")
+                    ):
+                        # the file may already be gone by the time the batch is applied
+                        with suppress(FileNotFoundError):
+                            trail.entries.mark(event.dest_path or event.src_path)
                     continue
                 # todo: event.apply should contain the logic for this, not watchdog.apply
                 if event.is_directory and event.event_type in ("created", "moved"):

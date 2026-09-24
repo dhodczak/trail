@@ -29,6 +29,18 @@ class TestTrail:
         return list(collection)
 
     @staticmethod
+    def mark(
+            root: Path,
+            *markers: str,
+    ) -> None:
+        # a tracked folder takes in only the files its markers indicate
+        text = ''.join(
+            f'{marker}\n'
+            for marker in markers
+        )
+        (root / '.markers').write_text(text, encoding='utf-8')
+
+    @staticmethod
     def opened_event(
             trail: Trail,
             csv: Path,
@@ -580,9 +592,10 @@ class TestTrail:
     def test_discovered_entries_survive_reload(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
+                self.mark(root, 'tsv')
                 trail = Trail(root)
                 root_entry = trail.track(root)
-                csv = root / 'discovered.csv'
+                csv = root / 'discovered.tsv'
                 directory = root / 'discovered_directory'
                 csv.write_text('name,value\nother,7\n', encoding='utf-8')
                 directory.mkdir()
@@ -691,6 +704,7 @@ class TestTrail:
     def test_folder_auto_tracks_created_files_and_nested_subdirectories(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
+                self.mark(root, 'csv')
                 trail = Trail(root)
                 folder = root / 'folder'
                 folder.mkdir()
@@ -771,6 +785,7 @@ class TestTrail:
     def test_renamed_folder_repaths_its_contents(self) -> None:
         async def run() -> None:
             with self.workspace() as root:
+                self.mark(root, 'csv')
                 trail = Trail(root)
                 folder = root / 'folder'
                 folder.mkdir()

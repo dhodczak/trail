@@ -314,6 +314,115 @@ class Entries[E: Entry](Collection[EntryKey, E]):
             return
         self._trail.offtrail(*paths)
 
+    def mark(self, *paths: PathLike) -> tuple[Entry, ...]:
+        """
+        Track the files the Trail's markers indicate but that it does not yet track. A file among
+        `paths` is checked alone, a directory is walked, and no paths at all walks the project
+        directory along with every tracked directory. Returns the entries newly tracked.
+        """
+        trail = self._trail
+        if not trail.markers:
+            return ()
+        candidates: list[Path] = []
+        roots: list[Path] = []
+        if paths:
+            for path in paths:
+                path = Path(path).expanduser()
+                # resolving would put the target in place of the link
+                if path.is_symlink():
+                    continue
+                path = path.resolve()
+                if path.is_dir():
+                    roots.append(path)
+                elif self._scoped(path):
+                    candidates.append(path)
+        else:
+            if trail.dir is not None:
+                roots.append(trail.dir.parent)
+            roots.extend(
+                directory.path
+                for directory in trail.dirs
+            )
+        candidates.extend(self._walk(roots))
+        marked = [
+            path
+            for path in dict.fromkeys(candidates)
+            if self._markable(path)
+        ]
+        if not marked:
+            return ()
+        tracked = trail.track(*marked)
+        if isinstance(tracked, Entry):
+            return (tracked,)
+        return tuple(tracked)
+
+    def _scoped(self, path: Path) -> bool:
+        # markers speak for the project directory and the tracked directories, not for whatever
+        # else the watchdog observes, such as the parent of a tracked directory
+        trail = self._trail
+        if (
+            trail.dir is not None
+            and path.is_relative_to(trail.dir.parent)
+        ):
+            return True
+        return any(
+            path.is_relative_to(directory.path)
+            for directory in trail.dirs
+        )
+
+    def _markable(self, path: Path) -> bool:
+        trail = self._trail
+        # the stat comes last, since most candidates fail on their extension alone
+        return (
+            trail.markers.matches(path)
+            and path not in trail.entries
+            and path not in trail._offtrailed_paths
+            and not trail._ignored(path)
+            and path.is_file()
+        )
+
+    def _walk(self, roots: Iterable[Path]) -> Iterator[Path]:
+        # shallowest first, so a root nested in another is walked once, as part of its ancestor
+        ordered = sorted(
+            set(roots),
+            key=lambda root: len(root.parts),
+        )
+        kept: list[Path] = []
+        for root in ordered:
+            if any(
+                root.is_relative_to(ancestor)
+                for ancestor in kept
+            ):
+                continue
+            kept.append(root)
+        for root in kept:
+            for directory, dirnames, filenames in os.walk(root):
+                parent = Path(directory)
+                # pruned in place so that os.walk does not descend; a hidden directory is walked
+                # only if it is tracked, which keeps .git and .venv out of the walk
+                dirnames[:] = [
+                    name
+                    for name in dirnames
+                    if self._descends(parent / name)
+                ]
+                for name in filenames:
+                    path = parent / name
+                    if not path.is_symlink():
+                        yield path
+
+    def _descends(self, path: Path) -> bool:
+        trail = self._trail
+        if (
+            path.is_symlink()
+            or trail._ignored(path)
+            or path in trail._offtrailed_paths
+        ):
+            return False
+        return (
+            not path.name.startswith('.')
+            or path in trail.dirs
+        )
+
     def entry(self, *paths: PathLike) -> tuple[E, ...]:
         selected: dict[Path, E] = {}
         for path in paths:

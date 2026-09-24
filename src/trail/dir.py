@@ -126,8 +126,10 @@ class Dir(Entry):
                     continue
                 if child.is_dir():
                     collection = trail.dirs
-                else:
+                elif trail.markers.matches(child):
                     collection = trail.assets
+                else:
+                    continue
                 pending.append(
                     collection.get(child) or Entry.from_path(child, trail=trail)
                 )

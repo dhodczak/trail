@@ -212,6 +212,8 @@ class Trail(Node):
             self.json.load()
             self.events.jsonl.read()
             self.json.dump()
+            # after the replay, so that what the log already tracks or offtrailed is known
+            self.entries.mark()
 
     @cached_property
     def id(self) -> str:
@@ -230,13 +232,19 @@ class Trail(Node):
             if path not in self.entries:
                 Entry.from_path(path, trail=self)
         tracked = []
+        directories = []
         for path in requested:
             entry = self.entries.get(path)
             if entry is None:
                 event = AddEntryEvent(src_path=str(path))
                 entry = event.apply(self)
                 self.events.append(event)
+                if event.is_directory:
+                    directories.append(entry.path)
             tracked.append(entry)
+        # a newly tracked directory brings along the marked files it already holds
+        if directories:
+            self.entries.mark(*directories)
         if len(paths) == 1:
             return tracked[0]
         return tracked
