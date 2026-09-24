@@ -245,9 +245,10 @@ class TestTrail:
                        ] == records
                 restored_entry = restored.entries[csv]
                 assert restored_entry.id == entry.id
+                # the first event tracks the project directory
                 assert all(
                     event.entry is restored_entry
-                    for event in restored.events
+                    for event in restored.events.select[1:]
                 )
                 previous = len(restored.events)
                 with csv.open(encoding="utf-8") as stream:
@@ -308,6 +309,17 @@ class TestTrail:
 
         asyncio.run(run())
 
+    def test_a_new_trail_tracks_its_project_directory(self) -> None:
+        with self.workspace() as root:
+            trail = Trail(root)
+            assert root in trail.dirs
+            events = len(trail.events)
+            # a directory once offtrailed is not taken back by a later session
+            trail.offtrail(root)
+            reloaded = Trail(root)
+            assert root not in reloaded.dirs
+            assert len(reloaded.events) == events + 1
+
     def test_track_untrack_and_retrack_history_can_be_restored(self) -> None:
         with self.workspace() as root:
             csv = root / 'dataset.csv'
@@ -320,9 +332,9 @@ class TestTrail:
             csv.unlink()
 
             restored = Trail(root)
-            addition = restored.events.select[0]
-            removal = restored.events.select[1]
-            readdition = restored.events.select[2]
+            addition = restored.events.select[1]
+            removal = restored.events.select[2]
+            readdition = restored.events.select[3]
             assert isinstance(addition, AddEntryEvent)
             assert isinstance(removal, RemoveEntryEvent)
             assert isinstance(readdition, AddEntryEvent)
@@ -485,9 +497,10 @@ class TestTrail:
                 await trail.watchdog.stop()
 
                 assert trail.events.select[-1].event_type == 'deleted'
+                # the first event tracks the project directory
                 assert all(
                     event.entry is entry
-                    for event in trail.events
+                    for event in trail.events.select[1:]
                 )
                 history = trail.events.jsonl.path.read_bytes()
                 expected_ids = trail.events.ids.copy()
@@ -678,7 +691,7 @@ class TestTrail:
             csv = root / 'dataset.csv'
             trail = Trail(root)
             entry = trail.track(csv)
-            event = trail.events.select[0]
+            event = trail.events.select[1]
             legacy_metadata = {'id': int(trail.id, 16)}
             trail.json.path.write_text(json.dumps(legacy_metadata), encoding='utf-8')
             legacy_event = event.to_record()

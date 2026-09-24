@@ -66,23 +66,24 @@ class TestListing:
     def test_a_slice_counts_the_way_python_counts(self) -> None:
         with self.session() as console:
             assert self.positions(self.run(console, "events :2")) == [0, 1]
-            assert self.positions(self.run(console, "events -2:")) == [2, 3]
-            assert self.positions(self.run(console, "events 2:")) == [2, 3]
+            assert self.positions(self.run(console, "events -2:")) == [3, 4]
+            assert self.positions(self.run(console, "events 3:")) == [3, 4]
             assert self.positions(self.run(console, "events 1:3")) == [1, 2]
 
     def test_a_filter_keeps_the_position_the_collection_addresses(self) -> None:
         with self.session() as console:
             entry = console._trail.assets[console.root / "c.csv"]
             written = self.run(console, f"events entry={entry.id}")
-            # c.csv was tracked third, and stays the third record however few are shown
-            assert self.positions(written) == [2]
+            # c.csv was tracked after the project directory and two assets, and keeps that
+            # position however few are shown
+            assert self.positions(written) == [3]
             assert entry.id in written
 
     def test_a_path_filter_takes_either_way_of_writing_it(self) -> None:
         with self.session() as console:
             absolute = self.run(console, f"events src_path={console.root / 'b.csv'}")
             relative = self.run(console, "events src_path=b.csv")
-            assert self.positions(absolute) == self.positions(relative) == [1]
+            assert self.positions(absolute) == self.positions(relative) == [2]
 
     def test_every_term_names_its_field(self) -> None:
         with self.session() as console:
@@ -90,7 +91,7 @@ class TestListing:
             event = trail.events.select[1]
             entry = trail.assets[console.root / "c.csv"]
             assert self.positions(self.run(console, f"events id={event.id}")) == [1]
-            assert self.positions(self.run(console, f"events entry={entry.id}")) == [2]
+            assert self.positions(self.run(console, f"events entry={entry.id}")) == [3]
             # a bare value is not guessed at, and the refusal says how to name it
             written = self.run(console, f"events {event.id}")
             assert "not a comparison" in written
@@ -106,7 +107,7 @@ class TestListing:
             assert "Dir" in self.run(console, "dirs")
             # a directory is not an asset, so the one collection does not answer for the other
             assert "nothing matched" in self.run(console, "assets path=folder")
-            assert self.positions(self.run(console, "dirs path=folder")) == [0]
+            assert self.positions(self.run(console, "dirs path=folder")) == [1]
 
     def test_or_takes_either_side(self) -> None:
         with self.session() as console:
@@ -126,16 +127,16 @@ class TestListing:
             # three records name a.csv, once it has been let go of and taken back
             self.run(console, "untrack a.csv")
             self.run(console, "track a.csv")
-            assert self.positions(self.run(console, "events src_path=a.csv")) == [0, 4, 5]
-            assert self.positions(self.run(console, "events src_path=a.csv -2:")) == [4, 5]
-            assert self.positions(self.run(console, "events -5: src_path=b.csv")) == [1]
+            assert self.positions(self.run(console, "events src_path=a.csv")) == [1, 5, 6]
+            assert self.positions(self.run(console, "events src_path=a.csv -2:")) == [5, 6]
+            assert self.positions(self.run(console, "events -5: src_path=b.csv")) == [2]
             assert "nothing matched" in self.run(console, "events -4: src_path=b.csv")
             # the position stays the one the collection addresses, not the one among the results
             grouped = self.run(console, "events (src_path=a.csv or src_path=b.csv) -3:")
-            assert self.positions(grouped) == [1, 4, 5]
+            assert self.positions(grouped) == [2, 5, 6]
             # ungrouped, the slice binds to the side of the `or` it was written on
             ungrouped = self.run(console, "events src_path=b.csv or src_path=a.csv -1:")
-            assert self.positions(ungrouped) == [1, 5]
+            assert self.positions(ungrouped) == [2, 6]
 
     def test_slices_cut_in_the_order_they_were_written(self) -> None:
         with self.session() as console:
@@ -146,19 +147,19 @@ class TestListing:
         with self.session() as console:
             (console.root / "d (e).csv").write_text("d\n", encoding="utf-8")
             self.run(console, "track 'd (e).csv'")
-            assert self.positions(self.run(console, "events src_path='d (e).csv'")) == [4]
-            assert self.positions(self.run(console, 'events "src_path=d (e).csv"')) == [4]
-            assert self.positions(self.run(console, "events (src_path='d (e).csv')")) == [4]
+            assert self.positions(self.run(console, "events src_path='d (e).csv'")) == [5]
+            assert self.positions(self.run(console, 'events "src_path=d (e).csv"')) == [5]
+            assert self.positions(self.run(console, "events (src_path='d (e).csv')")) == [5]
             either = self.run(console, "events (src_path='d (e).csv' or src_path=a.csv)")
-            assert self.positions(either) == [0, 4]
+            assert self.positions(either) == [1, 5]
 
     def test_without_a_slice_only_the_default_is_shown(self) -> None:
         with self.session() as console:
             console.commands["events"].default = 2
             written = self.run(console, "events")
-            assert "events (2 of 4)" in written
-            assert self.positions(written) == [2, 3]
-            assert self.positions(self.run(console, "events not src_path=a.csv")) == [2, 3]
+            assert "events (2 of 5)" in written
+            assert self.positions(written) == [3, 4]
+            assert self.positions(self.run(console, "events not src_path=a.csv")) == [3, 4]
             # any slice says how many, so the default steps aside
             assert self.positions(self.run(console, "events :3")) == [0, 1, 2]
 
@@ -202,21 +203,21 @@ class TestListing:
             assert "assets: cleared 3" in self.run(console, "assets clear -f")
             assert not len(trail.assets)
             # a directory is a collection of its own, and keeps what it holds
-            assert len(trail.dirs) == 1
+            assert len(trail.dirs) == 2
             # the removals were recorded, so the log replays into the same emptiness
             reopened = Trail(root)
             assert not len(reopened.assets)
-            assert len(reopened.dirs) == 1
+            assert len(reopened.dirs) == 2
 
     def test_clearing_the_entries_takes_both_collections(self) -> None:
         with self.session() as console:
             trail = console._trail
             recorded = len(trail.events)
-            assert "entries: cleared 4" in self.run(console, "entries clear -f")
+            assert "entries: cleared 5" in self.run(console, "entries clear -f")
             assert not len(trail.assets)
             assert not len(trail.dirs)
             # the log is untouched, and now carries the removals as well
-            assert len(trail.events) == recorded + 4
+            assert len(trail.events) == recorded + 5
 
     def test_clearing_the_events_empties_the_log(self) -> None:
         with self.session() as console:

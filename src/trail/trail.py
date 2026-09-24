@@ -209,11 +209,16 @@ class Trail(Node):
             if dir.name != ".trail":
                 dir /= ".trail"
             self.dir = dir
+            created = not self.json.path.exists()
             self.json.load()
             self.events.jsonl.read()
             self.json.dump()
-            # after the replay, so that what the log already tracks or offtrailed is known
-            self.entries.mark()
+            if created:
+                # tracking the project directory marks the files it already holds
+                self.track(dir.parent)
+            else:
+                # after the replay, so that what the log already tracks or offtrailed is known
+                self.entries.mark()
 
     @cached_property
     def id(self) -> str:
