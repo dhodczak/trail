@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Iterator, MutableSet
 from functools import cached_property
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -14,6 +16,9 @@ if TYPE_CHECKING:
 # path separators and wildcards cannot be part of an extension, and '!' and '#' are held back
 # for the gitignore syntax the file may grow into
 RESERVED: Final[frozenset[str]] = frozenset('/\\*?[]!#')
+
+# directory of the premade markers files that ship with trail
+PREMADE: Final = files('trail') / 'premade'
 
 
 class Text(Node):
@@ -66,6 +71,42 @@ class Text(Node):
         data = self._parent.data
         data.clear()
         data.update(loaded)
+
+    def create(self, markers: os.PathLike[str] | str) -> None:
+        """
+        Create the project's .markers file by copying a markers file. Does nothing if
+        .markers already exists.
+
+        markers:
+            str:
+                The name of a premade markers file, e.g. 'default' copies
+                `trail/premade/default.markers`.
+            Path:
+                A markers file on disk.
+        """
+        path = self.path
+        if (
+            path is None
+            or path.exists()
+        ):
+            return
+        if isinstance(markers, os.PathLike):
+            source = Path(markers).expanduser()
+            if not source.is_file():
+                msg = f'No markers file at {source}'
+                raise FileNotFoundError(msg)
+        else:
+            source = PREMADE / f'{markers}.markers'
+            if not source.is_file():
+                available = sorted(
+                    entry.name.removesuffix('.markers')
+                    for entry in PREMADE.iterdir()
+                    if entry.name.endswith('.markers')
+                )
+                msg = f'No premade markers {markers!r}; available: {available}'
+                raise FileNotFoundError(msg)
+        self.write(source.read_text(encoding='utf-8'))
+        self.read()
 
     def write(self, text: str) -> None:
         path = self.path

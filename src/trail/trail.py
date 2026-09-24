@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from functools import cached_property
 from itertools import islice
 from pathlib import Path
@@ -198,11 +199,26 @@ class Trail(Node):
     def __init__(
         self,
         dir: PathLike | None = None,
+        markers: os.PathLike[str] | str | None = 'default',
     ) -> None:
-        """TODO: reference Myst's setup for a Trail setup"""
+        """
+        Open the Trail for a project directory, creating it if it does not exist yet.
+
+        dir:
+            The project directory, or its .trail directory. If None, the Trail is
+            not saved to disk.
+        markers:
+            The markers to start a new Trail with. Ignored when the Trail already exists on file.
+
+            str:
+                The name of a premade markers file, e.g. 'default'.
+            Path:
+                A markers file on disk.
+            None:
+                Start without markers.
+        """
         super().__init__()
         if dir is None:
-            # nodir mode
             self.dir = None
         else:
             dir = Path(dir).expanduser().resolve()
@@ -210,14 +226,17 @@ class Trail(Node):
                 dir /= ".trail"
             self.dir = dir
             created = not self.json.path.exists()
+            if (
+                created
+                and markers is not None
+            ):
+                self.markers.text.create(markers)
             self.json.load()
             self.events.jsonl.read()
             self.json.dump()
             if created:
-                # tracking the project directory marks the files it already holds
                 self.track(dir.parent)
             else:
-                # after the replay, so that what the log already tracks or offtrailed is known
                 self.entries.mark()
 
     @cached_property

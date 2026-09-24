@@ -37,7 +37,7 @@ class TestListing:
             root = stack.enter_context(cls.workspace())
             pipe = stack.enter_context(create_pipe_input())
             stack.enter_context(create_app_session(input=pipe, output=DummyOutput()))
-            console = Console(Trail(root), root)
+            console = Console(Trail(root, markers=None), root)
             cls.run(console, "track a.csv b.csv c.csv folder")
             yield console
 
