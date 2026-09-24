@@ -10,6 +10,7 @@ from trail.asset import Assets
 from trail.dir import Dirs
 from trail.entry import Entries, Entry
 from trail.event import AddEntryEvent, Events, RemoveEntryEvent
+from trail.markers import Markers
 from trail.node import Node
 from trail.util import PathLike, asset_repr, bare_repr, list_repr, normalize_id
 from trail.watchdog import Watchdog
@@ -160,6 +161,15 @@ class Trail(Node):
     def json(self):
         """Returns a JSON instance, which functions as a namespace for the Trail's metadata stored in a JSON file."""
         return JSON(self)
+
+    @cached_property
+    def markers(self) -> Markers:
+        """
+        Returns a Markers instance, which holds the extensions of assets to automatically be tracked.
+        """
+        out = Markers(self)
+        out.text.read()
+        return out
 
     @cached_property
     def events(self):
