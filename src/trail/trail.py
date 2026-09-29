@@ -227,13 +227,11 @@ class Trail(Node):
         else:
             dir = Path(dir).expanduser().resolve()
             if dir.name != ".trail":
-                # like git, the nearest enclosing .trail wins
-                it = (
-                    parent / ".trail"
-                    for parent in (dir, *dir.parents)
-                    if (parent / ".trail").is_dir()
-                )
-                dir = next(it, dir / ".trail")
+                found = self.locate(dir)
+                if found is None:
+                    dir = dir / ".trail"
+                else:
+                    dir = found
             self.dir = dir
             created = not self.json.path.exists()
             if created and markers is not None:
@@ -245,6 +243,18 @@ class Trail(Node):
                 self.track(dir.parent)
             else:
                 self.entries.mark()
+
+    @staticmethod
+    def locate(dir: PathLike) -> Path | None:
+        """The .trail a Trail opened on `dir` would open, or None if it would create one."""
+        dir = Path(dir).expanduser().resolve()
+        # like git, the nearest enclosing .trail wins
+        it = (
+            parent / ".trail"
+            for parent in (dir, *dir.parents)
+            if (parent / ".trail").is_dir()
+        )
+        return next(it, None)
 
     @cached_property
     def id(self) -> str:

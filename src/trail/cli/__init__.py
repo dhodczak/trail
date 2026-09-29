@@ -9,15 +9,20 @@ from pathlib import Path
 from typing import NoReturn
 
 from trail.cli.console import Console
+from trail.cli.init import init
 from trail.trail import Trail
 
 __all__ = ["Console", "main", "parse", "relaunch"]
+
+# the one subcommand; anything else in its place is the project directory
+INIT = "init"
 
 
 def parse(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="trail",
         description="Watch a project directory and record what happens to its resources.",
+        epilog="'trail init [PATH]' walks through (re)initializing a project.",
     )
     parser.add_argument(
         "path",
@@ -34,7 +39,22 @@ def parse(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    argv = list(argv)
+    initializing = (
+        bool(argv)
+        and argv[0] == INIT
+    )
+    if initializing:
+        argv = argv[1:]
     arguments = parse(argv)
+    if (
+        initializing
+        and arguments.nodir
+    ):
+        print("trail: --nodir leaves nothing to initialize", file=sys.stderr)
+        return 2
     if arguments.path is None:
         root = Path.cwd()
     else:
@@ -50,6 +70,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if arguments.nodir:
         trail = Trail()
+    elif (
+        initializing
+        or Trail.locate(root) is None
+    ):
+        try:
+            trail = init(root)
+        except (KeyboardInterrupt, EOFError):
+            print("trail: init aborted; nothing was written", file=sys.stderr)
+            return 130
+        if initializing:
+            return 0
     else:
         trail = Trail(root)
     console = Console(trail, root)
