@@ -342,11 +342,11 @@ class TestTrail:
             nested.mkdir()
             assert Trail(nested).dir == inner / '.trail'
 
-    def test_the_search_stops_at_a_ceiling_directory(
-            self,
-            monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        with self.workspace() as root:
+    def test_the_search_stops_at_a_ceiling_directory(self) -> None:
+        with (
+            self.workspace() as root,
+            pytest.MonkeyPatch.context() as monkeypatch,
+        ):
             Trail(root)
             ceiling = root / 'ceiling'
             nested = ceiling / 'project'
@@ -962,6 +962,10 @@ if __name__ == "__main__":
             'test_renamed_folder_repaths_its_contents',
             'renamed folders repath their tracked contents',
         ),
+        (
+            'test_the_search_stops_at_a_ceiling_directory',
+            'test_the_search_stops_at_a_ceiling_directory'
+        )
     ]
 
     for method_name, description in tests:

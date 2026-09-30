@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from functools import cached_property
-from itertools import islice
+from itertools import islice, takewhile
 from pathlib import Path
 from uuid import uuid4
 
@@ -211,6 +211,7 @@ class Trail(Node):
 
             The directory and then each of its parents are searched for a .trail, and
             the first one found is opened. If none is found, .trail is created in dir.
+            The search does not climb into a directory listed in TRAIL_CEILING_DIRECTORIES.
 
         markers:
             The markers to start a new Trail with. Ignored when the Trail already exists on file.
@@ -254,10 +255,20 @@ class Trail(Node):
     def locate(dir: PathLike) -> Path | None:
         """The .trail a Trail opened on `dir` would open, or None if it would create one."""
         dir = Path(dir).expanduser().resolve()
+        # like GIT_CEILING_DIRECTORIES, the search never climbs into a ceiling
+        ceilings = {
+            Path(ceiling).expanduser().resolve()
+            for ceiling in os.environ.get("TRAIL_CEILING_DIRECTORIES", "").split(os.pathsep)
+            if ceiling
+        }
+        parents = takewhile(
+            lambda parent: parent not in ceilings,
+            dir.parents,
+        )
         # like git, the nearest enclosing .trail wins
         it = (
             parent / ".trail"
-            for parent in (dir, *dir.parents)
+            for parent in (dir, *parents)
             if (parent / ".trail").is_dir()
         )
         return next(it, None)
