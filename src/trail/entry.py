@@ -317,8 +317,8 @@ class Entries[E: Entry](Collection[EntryKey, E]):
     def mark(self, *paths: PathLike) -> tuple[Entry, ...]:
         """
         Track the files the Trail's markers indicate but that it does not yet track. A file among
-        `paths` is checked alone, a directory is walked, and no paths at all walks the project
-        directory along with every tracked directory. Returns the entries newly tracked.
+        `paths` is checked alone, a directory is walked, and no paths at all walks every tracked
+        directory. Returns the entries newly tracked.
         """
         trail = self._trail
         if not trail.markers:
@@ -337,8 +337,6 @@ class Entries[E: Entry](Collection[EntryKey, E]):
                 elif self._scoped(path):
                     candidates.append(path)
         else:
-            if trail.dir is not None:
-                roots.append(trail.dir.parent)
             roots.extend(
                 directory.path
                 for directory in trail.dirs
@@ -357,14 +355,10 @@ class Entries[E: Entry](Collection[EntryKey, E]):
         return tuple(tracked)
 
     def _scoped(self, path: Path) -> bool:
-        # markers speak for the project directory and the tracked directories, not for whatever
-        # else the watchdog observes, such as the parent of a tracked directory
+        # markers speak for the tracked directories, the project directory among them unless it
+        # was left untracked, not for whatever else the watchdog observes, such as the parent of
+        # a tracked directory
         trail = self._trail
-        if (
-            trail.dir is not None
-            and path.is_relative_to(trail.dir.parent)
-        ):
-            return True
         return any(
             path.is_relative_to(directory.path)
             for directory in trail.dirs

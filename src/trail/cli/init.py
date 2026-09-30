@@ -22,7 +22,7 @@ from prompt_toolkit.completion import (
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions
 from prompt_toolkit.formatted_text import FormattedText, StyleAndTextTuples
-from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import (
@@ -173,6 +173,27 @@ class Paths(PathCompleter):
                 yield completion
 
 
+def tabbing() -> KeyBindings:
+    """
+    Tab takes the completion under the cursor, or the first if none is, rather than moving on to
+    the next; a directory taken then offers its own contents, the way a shell descends into one.
+    """
+    bindings = KeyBindings()
+
+    @bindings.add("tab", filter=has_completions)
+    def _take(event: KeyPressEvent) -> None:
+        buffer = event.current_buffer
+        state = buffer.complete_state
+        completion = state.current_completion
+        if completion is None:
+            completion = state.completions[0]
+        buffer.apply_completion(completion)
+        if completion.text.endswith("/"):
+            buffer.start_completion(select_first=False)
+
+    return bindings
+
+
 def expand(
         text: str,
         root: Path,
@@ -224,7 +245,7 @@ def respecify(
     text = prompt(
         "  Trail directory: ",
         default=str(suggested),
-        key_bindings=bindings,
+        key_bindings=merge_key_bindings([bindings, tabbing()]),
         completer=completer,
         validator=validator,
         validate_while_typing=False,
@@ -602,7 +623,7 @@ class Picker:
     def application(self) -> Application[tuple[str, list[str]] | None]:
         return Application(
             layout=self.layout,
-            key_bindings=self.bindings,
+            key_bindings=merge_key_bindings([self.bindings, tabbing()]),
             style=STYLE,
             erase_when_done=True,
         )
@@ -649,17 +670,19 @@ class Asked(Completer):
 
 def ask(
         message: Callable[[], StyleAndTextTuples],
-        request: str,
+        request: Callable[[], str],
         submit: Callable[[str], None],
         completer: Completer,
         multiline: bool = False,
+        extra: KeyBindings | None = None,
 ) -> None:
     """
     A prompt that stays open across submissions. Each one is handed to `submit` and the prompt
     emptied, so that `message`, which shows what the submissions have made, is redrawn in place
     rather than printed again. `request` asks for the next one, with the cursor on the line
     below it. Only an empty submission closes the prompt, and it is given to `submit` as well, so
-    that notes left by the last one are cleared before `message` is printed for good.
+    that notes left by the last one are cleared before `message` is printed for good. `extra`
+    is consulted before the submission on enter, so that its own bindings may claim the key.
     """
     bindings = KeyBindings()
 
@@ -672,15 +695,21 @@ def ask(
         else:
             buffer.validate_and_handle()
 
+    # the last binding matching a key is the one that handles it
+    merged = [bindings, tabbing()]
+    if extra is not None:
+        merged.append(extra)
+    bindings = merge_key_bindings(merged)
+
     def framed() -> StyleAndTextTuples:
         out = message()
-        out.append(("", f"  {request} (or <ENTER> to continue):\n"))
+        out.append(("", f"  {request()}\n"))
         out.append(("class:echo.prompt", f"  {PROMPT}"))
         return out
 
     # the request and the cursor are spent once the prompt closes, so the prompt is erased and
     # only what the submissions made is left on screen
-    session = PromptSession(erase_when_done=True)
+    session = PromptSession(erase_when_done=True, style=STYLE)
     # multiline only so that a paste keeps its lines; typed, enter submits
     session.prompt(
         framed,
@@ -701,7 +730,7 @@ def toggle(markers: set[str]) -> set[str]:
     errors: list[str] = []
 
     def message() -> StyleAndTextTuples:
-        fragments: StyleAndTextTuples = [("class:info", "  markers\n")]
+        fragments: StyleAndTextTuples = []
         if out:
             fragments.append(("class:kind", f"  {bare(out)}\n"))
         else:
@@ -730,7 +759,10 @@ def toggle(markers: set[str]) -> set[str]:
         words = bare(set(COMMON) | out).split()
         return WordCompleter(words, WORD=True)
 
-    ask(message, "Enter an extension", submit, DynamicCompleter(offered))
+    def request() -> str:
+        return "Enter an extension (or <ENTER> to continue):"
+
+    ask(message, request, submit, DynamicCompleter(offered))
     return out
 
 
@@ -775,25 +807,90 @@ def gather(
         root: Path,
 ) -> list[Path]:
     """
-    The paths to track beyond the Trail directory. Each submission toggles what it names, so a
-    path entered twice is dropped again, and redraws the listing in place; only an empty
-    submission moves on. Enter submits the lines of a paste together.
+    The paths to track, starting from the Trail directory. Each submission adds what it names
+    and redraws the listing in place; enter submits the lines of a paste together. The arrows
+    take a cursor into the listing, where enter removes the path under it, the Trail directory
+    included; typing, escape, or moving down past the last path gives the cursor back to the
+    prompt. Only an empty submission from the prompt moves on.
     """
     metadata = home / ".trail"
-    selected: dict[Path, None] = {}
+    selected: dict[Path, None] = {home: None}
     notes: list[tuple[str, str]] = []
+    # the index into `selected` of the path under the cursor; None while at the prompt
+    cursor: int | None = None
+    browsing = Condition(lambda: cursor is not None)
+    idle = ~has_completions & Condition(lambda: not get_app().current_buffer.text)
 
     def message() -> StyleAndTextTuples:
-        fragments: StyleAndTextTuples = [("class:kind", f"  {display(home)}\n")]
-        fragments.extend(
-            ("class:kind", f"  {display(path)}\n")
-            for path in selected
-        )
+        fragments: StyleAndTextTuples = []
+        if not selected:
+            fragments.append(("class:info", "  none\n"))
+        for index, path in enumerate(selected):
+            if index == cursor:
+                fragments.append(("class:selected-option", f"> {display(path)}\n"))
+            else:
+                fragments.append(("class:kind", f"  {display(path)}\n"))
         fragments.extend(
             (style, f"  {note}\n")
             for style, note in notes
         )
         return fragments
+
+    def request() -> str:
+        if cursor is not None:
+            return "Press <ENTER> to remove this path, or <ESCAPE> to return:"
+        if selected:
+            return "Enter a path, <UP> to remove one, or <ENTER> to continue:"
+        return "Enter a path (or <ENTER> to continue):"
+
+    bindings = KeyBindings()
+
+    @bindings.add("up", filter=idle)
+    def _up(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        if not selected:
+            return
+        if cursor is None:
+            cursor = len(selected) - 1
+        else:
+            cursor = max(0, cursor - 1)
+        notes.clear()
+
+    @bindings.add("down", filter=idle & browsing)
+    def _down(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        if cursor == len(selected) - 1:
+            cursor = None
+        else:
+            cursor += 1
+
+    @bindings.add("enter", filter=browsing)
+    def _remove(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        path = list(selected)[cursor]
+        del selected[path]
+        if not selected:
+            cursor = None
+        else:
+            cursor = min(cursor, len(selected) - 1)
+
+    @bindings.add("escape", filter=browsing, eager=True)
+    def _return(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        cursor = None
+
+    # typing hands the keys back to the prompt, starting with the one typed
+    @bindings.add(Keys.Any, filter=browsing)
+    def _type(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        cursor = None
+        event.current_buffer.insert_text(event.data)
+
+    @bindings.add(Keys.BracketedPaste, filter=browsing)
+    def _paste(event: KeyPressEvent) -> None:
+        nonlocal cursor
+        cursor = None
+        event.current_buffer.insert_text(Console.pasted(event.data))
 
     def submit(text: str) -> None:
         notes.clear()
@@ -812,12 +909,10 @@ def gather(
                 for error in errors
             )
             for path in paths:
-                if path == home:
-                    notes.append(("class:info", f"{display(path)} is the Trail directory"))
-                elif path.is_relative_to(metadata):
+                if path.is_relative_to(metadata):
                     notes.append(("class:error", f"{display(path)} is Trail metadata"))
                 elif path in selected:
-                    del selected[path]
+                    notes.append(("class:info", f"{display(path)} is already listed"))
                 else:
                     selected[path] = None
 
@@ -825,7 +920,7 @@ def gather(
         expanduser=True,
         get_paths=lambda: [str(root)],
     )
-    ask(message, "Enter a path", submit, completer, multiline=True)
+    ask(message, request, submit, completer, multiline=True, extra=bindings)
     return list(selected)
 
 
@@ -837,7 +932,8 @@ def init(root: Path) -> Trail:
     """
     Walk through starting a Trail, or re-initializing one, with relative paths read from `root`.
     Every question is asked before anything is written, so an interrupt leaves the project
-    untouched. Re-initializing rewrites the markers and adds to what is tracked; the log is kept.
+    untouched. Re-initializing rewrites the markers and adds to what is tracked, offtrailing
+    only the Trail directory if it was removed from the listing; the log is kept.
     """
     existing = Trail.locate(root)
     if existing is None:
@@ -848,7 +944,7 @@ def init(root: Path) -> Trail:
     say("")
     say("🌲 Welcome to Trail! 🌳", "bold")
     say("")
-    say("Trail leaves breadcrumbs along your data's journey: the interactions git never sees,")
+    say("Trail leaves breadcrumbs along your data journey: the interactions git never sees,")
     say("such as opening a dataset, viewing it on a map, or carrying it between tools, so you")
     say("can retrace your project's steps.")
     say(f"Read more at {WEBSITE}", "class:info")
@@ -889,8 +985,9 @@ def init(root: Path) -> Trail:
 
     say("Here's the directories and assets we're ready to track.", "bold")
     hint(
-        "You can enter a specific path to enter it, or press <ENTER> to continue.",
-        "We also accept multiple paths at the same time.",
+        "Enter a specific path to add it; several can be entered or pasted at once.",
+        "Scroll up through the list and press <ENTER> to remove the path under the cursor.",
+        "Press <ENTER> on an empty prompt to continue.",
         "You can always use `trail track` and `trail offtrail` to add or remove paths later.",
     )
     say("")
@@ -903,7 +1000,13 @@ def init(root: Path) -> Trail:
     # the markers are on file before the Trail opens, so the files they mark are tracked with
     # the project directory rather than after it; naming .trail itself opens the directory
     # chosen, even nested in another Trail
-    trail = Trail(home / ".trail", markers=None)
+    trail = Trail(home / ".trail", markers=None, tracked=home in paths)
+    # a Trail being re-initialized already tracks its directory, which may have been removed
+    if (
+        home not in paths
+        and home in trail.entries
+    ):
+        trail.offtrail(home)
     for tracked in paths:
         if tracked in trail.entries:
             continue

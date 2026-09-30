@@ -200,6 +200,7 @@ class Trail(Node):
         self,
         dir: PathLike | None = None,
         markers: os.PathLike[str] | str | None = "default",
+        tracked: bool = True,
     ):
         """
         Open the Trail for a project directory, creating it if it does not exist yet.
@@ -220,6 +221,10 @@ class Trail(Node):
                 A markers file on disk.
             None:
                 Start without markers.
+
+        tracked:
+            Whether a new Trail tracks its project directory. Ignored when the Trail already
+            exists on file.
         """
         super().__init__()
         if dir is None:
@@ -240,7 +245,8 @@ class Trail(Node):
             self.events.jsonl.read()
             self.json.dump()
             if created:
-                self.track(dir.parent)
+                if tracked:
+                    self.track(dir.parent)
             else:
                 self.entries.mark()
 
