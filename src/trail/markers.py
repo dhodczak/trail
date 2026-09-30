@@ -21,6 +21,15 @@ RESERVED: Final[frozenset[str]] = frozenset('/\\*?[]!#')
 PREMADE: Final = files('trail') / 'premade'
 
 
+def premade() -> list[str]:
+    """The names of the premade markers files that ship with trail, e.g. 'default'."""
+    return sorted(
+        entry.name.removesuffix('.markers')
+        for entry in PREMADE.iterdir()
+        if entry.name.endswith('.markers')
+    )
+
+
 class Text(Node):
     """
     The `.markers` file beside the trail directory. Markers are added and removed by editing
@@ -98,12 +107,7 @@ class Text(Node):
         else:
             source = PREMADE / f'{markers}.markers'
             if not source.is_file():
-                available = sorted(
-                    entry.name.removesuffix('.markers')
-                    for entry in PREMADE.iterdir()
-                    if entry.name.endswith('.markers')
-                )
-                msg = f'No premade markers {markers!r}; available: {available}'
+                msg = f'No premade markers {markers!r}; available: {premade()}'
                 raise FileNotFoundError(msg)
         self.write(source.read_text(encoding='utf-8'))
         self.read()

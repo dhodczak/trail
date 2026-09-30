@@ -35,6 +35,7 @@ STYLE: Final = Style.from_dict(
         "event.moved": "ansicyan",
         "event.opened": "ansibrightblack",
         "text-area.prompt": "ansicyan bold",
+        "selected-option": "ansicyan bold",
     }
 )
 
